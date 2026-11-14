@@ -1,0 +1,216 @@
+/* RoomTrail Layout Styles */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Navbar */
+.rt-navbar {
+  height: var(--rt-header-height);
+  background-color: var(--rt-navy-900);
+  color: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+}
+
+.rt-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+.rt-brand:hover {
+  color: #ffffff;
+}
+.rt-brand-badge {
+  background: linear-gradient(135deg, var(--rt-blue-500), #0ea5e9);
+  color: #ffffff;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+}
+
+/* Main Layout Shell */
+.app-body {
+  display: flex;
+  flex: 1;
+  position: relative;
+}
+
+/* Sidebar */
+.rt-sidebar {
+  width: var(--rt-sidebar-width);
+  background-color: #ffffff;
+  border-right: 1px solid var(--rt-border);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.25s ease-in-out, transform 0.25s ease-in-out;
+  flex-shrink: 0;
+  z-index: 1020;
+}
+
+.rt-sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - var(--rt-header-height));
+  position: sticky;
+  top: var(--rt-header-height);
+  padding: 1.25rem 0.85rem;
+  overflow-y: auto;
+}
+
+.rt-sidebar-collapsed {
+  width: var(--rt-sidebar-collapsed-width);
+}
+
+.rt-nav-section-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--rt-text-light);
+  padding: 0.6rem 0.85rem 0.3rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rt-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.65rem 0.95rem;
+  border-radius: var(--rt-border-radius-sm);
+  color: var(--rt-text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 0.92rem;
+  margin-bottom: 0.25rem;
+  transition: var(--rt-transition-fast);
+}
+.rt-nav-item i {
+  font-size: 1.15rem;
+  width: 22px;
+  text-align: center;
+  color: var(--rt-text-muted);
+  transition: var(--rt-transition-fast);
+}
+.rt-nav-item:hover {
+  background-color: var(--rt-blue-50);
+  color: var(--rt-navy-900);
+}
+.rt-nav-item:hover i {
+  color: var(--rt-blue-500);
+}
+.rt-nav-item.active {
+  background-color: var(--rt-navy-900);
+  color: #ffffff;
+}
+.rt-nav-item.active i {
+  color: #ffffff;
+}
+
+/* Main Content Area */
+.rt-content-area {
+  flex: 1;
+  min-width: 0; /* Prevents overflow in flexbox */
+  background-color: var(--rt-bg-app);
+  padding: 1.75rem 2rem 3rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Page Header */
+.page-header {
+  margin-bottom: 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.page-title {
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: var(--rt-navy-900);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.page-subtitle {
+  font-size: 0.88rem;
+  color: var(--rt-text-muted);
+  margin-top: 0.25rem;
+  margin-bottom: 0;
+}
+
+/* Footer */
+.rt-footer {
+  background-color: #ffffff;
+  border-top: 1px solid var(--rt-border);
+  padding: 1.25rem 2rem;
+  font-size: 0.85rem;
+  color: var(--rt-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+/* Mobile backdrop */
+.rt-sidebar-backdrop {
+  display: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 991.98px) {
+  .rt-sidebar {
+    position: fixed;
+    top: var(--rt-header-height);
+    bottom: 0;
+    left: 0;
+    z-index: 1040;
+    transform: translateX(-100%);
+    box-shadow: var(--rt-shadow-lg);
+  }
+  .rt-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  .rt-sidebar-backdrop.mobile-open {
+    display: block;
+    position: fixed;
+    top: var(--rt-header-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(11, 25, 44, 0.5);
+    z-index: 1035;
+    backdrop-filter: blur(2px);
+  }
+  .rt-content-area {
+    padding: 1.25rem 1rem 2rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .rt-navbar {
+    padding: 0 1rem;
+  }
+  .page-title {
+    font-size: 1.35rem;
+  }
+}

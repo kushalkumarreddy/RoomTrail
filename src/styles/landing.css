@@ -1,0 +1,100 @@
+/* RoomTrail Landing Page Styles */
+
+.landing-hero {
+  background: linear-gradient(135deg, var(--rt-navy-950) 0%, var(--rt-navy-900) 50%, var(--rt-navy-800) 100%);
+  color: #ffffff;
+  padding: 5rem 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.landing-hero::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  right: -10%;
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 141, 218, 0.18) 0%, transparent 70%);
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+.landing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 0.4rem 1rem;
+  border-radius: 9999px;
+  font-size: 0.85rem;
+  color: var(--rt-blue-400);
+  font-weight: 500;
+  margin-bottom: 1.5rem;
+}
+
+.landing-title {
+  font-size: 2.85rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin-bottom: 1.25rem;
+}
+@media (max-width: 767.98px) {
+  .landing-title {
+    font-size: 2.15rem;
+  }
+}
+
+.landing-subtitle {
+  font-size: 1.12rem;
+  color: #94a3b8;
+  line-height: 1.6;
+  max-width: 640px;
+  margin-bottom: 2rem;
+}
+
+.feature-card {
+  background-color: #ffffff;
+  border: 1px solid var(--rt-border);
+  border-radius: var(--rt-border-radius-md);
+  padding: 2rem 1.75rem;
+  height: 100%;
+  transition: var(--rt-transition-base);
+}
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--rt-shadow-lg);
+  border-color: #cbd5e1;
+}
+
+.feature-icon-wrap {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  margin-bottom: 1.25rem;
+}
+
+.step-card {
+  background-color: #ffffff;
+  border: 1px solid var(--rt-border);
+  border-radius: var(--rt-border-radius-md);
+  padding: 1.75rem;
+  position: relative;
+  height: 100%;
+}
+.step-number {
+  position: absolute;
+  top: 1rem;
+  right: 1.25rem;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  line-height: 1;
+}

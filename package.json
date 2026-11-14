@@ -1,0 +1,34 @@
+{
+  "name": "roomtrail",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "server": "json-server db.json -p 5001",
+    "dev:all": "concurrently -n \"API,VITE\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run server\" \"npm run dev\"",
+    "start": "concurrently -n \"API,VITE\" -c \"bgBlue.bold,bgGreen.bold\" \"npm run server\" \"npm run dev\""
+  },
+  "dependencies": {
+    "axios": "^1.21.1",
+    "bootstrap": "^5.3.9",
+    "bootstrap-icons": "^1.13.2",
+    "concurrently": "^10.0.7",
+    "json-server": "^1.0.0-beta.15",
+    "leaflet": "^1.9.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.18.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.90.0",
+    "vite": "^8.3.6"
+  }
+}

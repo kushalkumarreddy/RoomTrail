@@ -1,0 +1,56 @@
+/* RoomTrail Design System Variables */
+:root {
+  /* Color Palette: Dark Navy, White, and Subtle Blue */
+  --rt-navy-950: #060e18;
+  --rt-navy-900: #0b192c; /* Deep Primary Navy */
+  --rt-navy-800: #142841; /* Secondary Navy */
+  --rt-navy-700: #1e3e62; /* Card Header & Active Accent Navy */
+  --rt-navy-600: #2b5484;
+
+  --rt-blue-600: #0284c7;
+  --rt-blue-500: #008dda; /* Vibrant Subtle Blue */
+  --rt-blue-400: #38bdf8;
+  --rt-blue-100: #e0f2fe;
+  --rt-blue-50: #f0f7ff;  /* Soft Blue Tint */
+
+  /* Neutral & Surface Colors */
+  --rt-bg-app: #f4f7fb;    /* Premium soft slate background */
+  --rt-surface: #ffffff;   /* Pure White Cards */
+  --rt-surface-alt: #f8fafc;
+  --rt-border: #e2e8f0;    /* Crisp subtle borders */
+  --rt-border-subtle: #edf2f7;
+
+  /* Typography Colors */
+  --rt-text-main: #0f172a;  /* High contrast text */
+  --rt-text-secondary: #334155;
+  --rt-text-muted: #64748b; /* Subtle descriptor text */
+  --rt-text-light: #94a3b8;
+
+  /* Semantic Status Colors */
+  --rt-success: #10b981;
+  --rt-success-bg: #ecfdf5;
+  --rt-warning: #f59e0b;
+  --rt-warning-bg: #fffbeb;
+  --rt-danger: #ef4444;
+  --rt-danger-bg: #fef2f2;
+  --rt-info: #0284c7;
+  --rt-info-bg: #f0f9ff;
+
+  /* Layout Dimensions */
+  --rt-header-height: 68px;
+  --rt-sidebar-width: 260px;
+  --rt-sidebar-collapsed-width: 72px;
+
+  /* Elevation (Minimal, crisp shadows) */
+  --rt-shadow-xs: 0 1px 2px 0 rgba(11, 25, 44, 0.05);
+  --rt-shadow-sm: 0 1px 3px 0 rgba(11, 25, 44, 0.08), 0 1px 2px -1px rgba(11, 25, 44, 0.08);
+  --rt-shadow-md: 0 4px 6px -1px rgba(11, 25, 44, 0.08), 0 2px 4px -2px rgba(11, 25, 44, 0.06);
+  --rt-shadow-lg: 0 10px 15px -3px rgba(11, 25, 44, 0.08), 0 4px 6px -4px rgba(11, 25, 44, 0.04);
+
+  /* Transitions */
+  --rt-transition-fast: all 0.15s ease-in-out;
+  --rt-transition-base: all 0.25s ease-in-out;
+  --rt-border-radius-sm: 6px;
+  --rt-border-radius-md: 10px;
+  --rt-border-radius-lg: 14px;
+}
