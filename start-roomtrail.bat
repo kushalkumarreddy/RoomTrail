@@ -28,7 +28,7 @@ if errorlevel 1 (
 netstat -ano | findstr ":5173 " | findstr "LISTENING" >nul
 if errorlevel 1 (
     echo [3/3] Starting React Vite Frontend (Port 5173)...
-    cd /d "E:\Using AntiGravity\RoomTrail"
+    cd /d "E:\Using AntiGravity\RoomTrail\frontend"
     start "RoomTrail Frontend (Port 5173)" /min cmd /c "npm run dev"
     timeout /t 2 /nobreak >nul
 ) else (

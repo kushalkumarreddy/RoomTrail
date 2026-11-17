@@ -33,7 +33,7 @@ public class PropertyService {
 
     @Transactional
     public Property create(Property property, Long userId) {
-        if (userId != null && property.getUserId() == null) {
+        if (userId != null) {
             property.setUserId(userId);
         }
         if (property.getId() == null || property.getId().trim().isEmpty()) {
@@ -62,6 +62,7 @@ public class PropertyService {
         if (updates.containsKey("price")) property.setPrice((String) updates.get("price"));
         if (updates.containsKey("contactPerson")) property.setContactPerson((String) updates.get("contactPerson"));
         if (updates.containsKey("contactPhone")) property.setContactPhone((String) updates.get("contactPhone"));
+        if (updates.containsKey("contactNumber")) property.setContactNumber((String) updates.get("contactNumber"));
         if (updates.containsKey("contactDetails")) property.setContactDetails((String) updates.get("contactDetails"));
         if (updates.containsKey("notes")) property.setNotes((String) updates.get("notes"));
 
@@ -70,6 +71,7 @@ public class PropertyService {
         }
         if (updates.containsKey("visitStatus")) property.setVisitStatus((String) updates.get("visitStatus"));
         if (updates.containsKey("visitedAt")) property.setVisitedAt((String) updates.get("visitedAt"));
+        if (updates.containsKey("lastVisitedAt")) property.setLastVisitedAt((String) updates.get("lastVisitedAt"));
         if (updates.containsKey("amenities") || updates.containsKey("facilities")) {
             Object am = updates.containsKey("amenities") ? updates.get("amenities") : updates.get("facilities");
             if (am instanceof List<?> list) {

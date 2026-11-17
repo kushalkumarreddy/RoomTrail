@@ -1,5 +1,7 @@
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\config\DataInitializer.java
+E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\config\ProductionSecurityValidator.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\config\SecurityConfig.java
+E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\controller\AdminController.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\controller\AuthController.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\controller\GeocodeController.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\controller\PropertyController.java
@@ -8,11 +10,14 @@ E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\controller\Tr
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\controller\TripSummaryController.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\controller\UserController.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\controller\VisitController.java
+E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\dto\AdminUserSummaryDto.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\dto\AggregatedMetricsDto.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\dto\AuthRequest.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\dto\AuthResponse.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\dto\RegisterRequest.java
+E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\dto\TripRouteHistoryDto.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\dto\UserProfileDto.java
+E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\entity\AdminAuditLog.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\entity\Property.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\entity\RoutePoint.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\entity\Trip.java
@@ -22,6 +27,7 @@ E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\entity\Visit.
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\exception\BadRequestException.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\exception\GlobalExceptionHandler.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\exception\ResourceNotFoundException.java
+E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\repository\AdminAuditLogRepository.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\repository\PropertyRepository.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\repository\RoutePointRepository.java
 E:\Using AntiGravity\RoomTrail\backend\src\main\java\com\roomtrail\repository\TripRepository.java

@@ -24,13 +24,23 @@ public class PropertyController {
     @GetMapping
     public ResponseEntity<List<Property>> getAllProperties(@RequestParam(required = false) Long userId,
                                                            Authentication authentication) {
-        Long effectiveUserId = userId != null ? userId : getUserId(authentication);
+        Long authenticatedId = getUserId(authentication);
+        boolean admin = isAdmin(authentication);
+        Long effectiveUserId = admin ? userId : authenticatedId;
         return ResponseEntity.ok(propertyService.getAll(effectiveUserId));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Property> getPropertyById(@PathVariable String id) {
-        return ResponseEntity.ok(propertyService.getById(id));
+    public ResponseEntity<Property> getPropertyById(@PathVariable String id, Authentication authentication) {
+        Property property = propertyService.getById(id);
+        if (property == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Long authenticatedId = getUserId(authentication);
+        if (!isAdmin(authentication) && !isOwner(property.getUserId(), authenticatedId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        return ResponseEntity.ok(property);
     }
 
     @PostMapping
@@ -43,18 +53,44 @@ public class PropertyController {
 
     @PatchMapping("/{id}")
     public ResponseEntity<Property> patchProperty(@PathVariable String id,
-                                                  @RequestBody Map<String, Object> updates) {
+                                                  @RequestBody Map<String, Object> updates,
+                                                  Authentication authentication) {
+        Property existing = propertyService.getById(id);
+        if (existing == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Long authenticatedId = getUserId(authentication);
+        if (!isAdmin(authentication) && !isOwner(existing.getUserId(), authenticatedId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(propertyService.update(id, updates));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<Property> updateProperty(@PathVariable String id,
-                                                  @RequestBody Map<String, Object> updates) {
+                                                   @RequestBody Map<String, Object> updates,
+                                                   Authentication authentication) {
+        Property existing = propertyService.getById(id);
+        if (existing == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Long authenticatedId = getUserId(authentication);
+        if (!isAdmin(authentication) && !isOwner(existing.getUserId(), authenticatedId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         return ResponseEntity.ok(propertyService.update(id, updates));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProperty(@PathVariable String id) {
+    public ResponseEntity<Void> deleteProperty(@PathVariable String id, Authentication authentication) {
+        Property existing = propertyService.getById(id);
+        if (existing == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Long authenticatedId = getUserId(authentication);
+        if (!isAdmin(authentication) && !isOwner(existing.getUserId(), authenticatedId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
         propertyService.delete(id);
         return ResponseEntity.noContent().build();
     }
@@ -64,5 +100,21 @@ public class PropertyController {
             return up.getId();
         }
         return null;
+    }
+
+    private boolean isAdmin(Authentication authentication) {
+        if (authentication == null) return false;
+        return authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_ADMIN") || a.getAuthority().equalsIgnoreCase("ADMIN"));
+    }
+
+    private boolean isOwner(String entityUserId, Long authenticatedId) {
+        if (authenticatedId == null) return false;
+        if (entityUserId == null) return true;
+        try {
+            return Long.parseLong(entityUserId.trim()) == authenticatedId;
+        } catch (NumberFormatException e) {
+            return entityUserId.trim().equalsIgnoreCase(String.valueOf(authenticatedId));
+        }
     }
 }

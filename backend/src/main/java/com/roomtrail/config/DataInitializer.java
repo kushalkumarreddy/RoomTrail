@@ -54,8 +54,45 @@ public class DataInitializer implements CommandLineRunner {
         log.info("Starting RoomTrail Data Migration and Seeding...");
 
         try {
-            // Check if default user exists, if not seed
-            if (!userRepository.existsByEmail("alex@roomtrail.com")) {
+            // 1. Check if default admin account exists, if not initialize automatically
+            if (!userRepository.existsByUsername("admink") && !userRepository.existsByEmail("admink@roomtrail.com")) {
+                User adminUser = new User();
+                adminUser.setUsername("admink");
+                adminUser.setEmail("admink@roomtrail.com");
+                adminUser.setPassword(passwordEncoder.encode("admink"));
+                adminUser.setFullName("Administrator");
+                adminUser.setPhone("+91 99999 88888");
+                adminUser.setRole("ROLE_ADMIN");
+                adminUser.setBio("System Administrator for RoomTrail platform");
+                adminUser.setTravelMode("car");
+                adminUser.setCity("Bengaluru, India");
+                adminUser.setHomeLat(12.9716);
+                adminUser.setHomeLng(77.5946);
+                adminUser.setNotificationRadiusMeters(200);
+                adminUser.setThemePreference("light");
+                userRepository.save(adminUser);
+                log.info("Initialized default admin account: admink / admink (Role: ADMIN) with BCrypt hashed password.");
+            } else {
+                // Ensure existing admink account has ROLE_ADMIN and BCrypt hashed password
+                userRepository.findByUsername("admink").or(() -> userRepository.findByEmail("admink@roomtrail.com")).ifPresent(admin -> {
+                    boolean changed = false;
+                    if (!"ROLE_ADMIN".equalsIgnoreCase(admin.getRole()) && !"ADMIN".equalsIgnoreCase(admin.getRole())) {
+                        admin.setRole("ROLE_ADMIN");
+                        changed = true;
+                    }
+                    if (!passwordEncoder.matches("admink", admin.getPassword())) {
+                        admin.setPassword(passwordEncoder.encode("admink"));
+                        changed = true;
+                    }
+                    if (changed) {
+                        userRepository.save(admin);
+                        log.info("Refreshed default admin account admink credentials and role.");
+                    }
+                });
+            }
+
+            // 2. Check if default user exists, if not seed
+            if (!userRepository.existsByEmail("alex@roomtrail.com") && !userRepository.existsByUsername("alex_traveler")) {
                 User defaultUser = new User();
                 defaultUser.setId(1L);
                 defaultUser.setUsername("alex_traveler");

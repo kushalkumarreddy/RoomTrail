@@ -29,6 +29,9 @@ public class User {
     @Column(length = 50)
     private String role = "ROLE_USER";
 
+    @Column(name = "status", length = 30)
+    private String status = "ACTIVE";
+
     @Column(columnDefinition = "TEXT")
     private String bio;
 
@@ -97,6 +100,10 @@ public class User {
 
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
+
+    public String getStatus() { return status != null && !status.trim().isEmpty() ? status : "ACTIVE"; }
+    public void setStatus(String status) { this.status = status; }
+    public boolean isActive() { return !"DEACTIVATED".equalsIgnoreCase(getStatus()); }
 
     public String getBio() { return bio; }
     public void setBio(String bio) { this.bio = bio; }

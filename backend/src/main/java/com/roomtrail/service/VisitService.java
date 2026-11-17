@@ -33,7 +33,7 @@ public class VisitService {
 
     @Transactional
     public Visit create(Visit visit, Long userId) {
-        if (userId != null && visit.getUserId() == null) {
+        if (userId != null) {
             visit.setUserId(userId);
         }
         if (visit.getId() == null || visit.getId().trim().isEmpty()) {

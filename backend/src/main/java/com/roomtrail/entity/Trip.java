@@ -35,8 +35,14 @@ public class Trip {
     @Column(name = "start_lat")
     private Double startLat = 12.9716;
 
+    @Column(name = "start_latitude")
+    private Double startLatitude;
+
     @Column(name = "start_lng")
     private Double startLng = 77.5946;
+
+    @Column(name = "start_longitude")
+    private Double startLongitude;
 
     @Column(name = "end_location", length = 200)
     private String endLocation = "Indiranagar Central";
@@ -44,8 +50,14 @@ public class Trip {
     @Column(name = "end_lat")
     private Double endLat = 12.9784;
 
+    @Column(name = "end_latitude")
+    private Double endLatitude;
+
     @Column(name = "end_lng")
     private Double endLng = 77.6408;
+
+    @Column(name = "end_longitude")
+    private Double endLongitude;
 
     @Column(name = "start_time")
     private String startTime;
@@ -96,11 +108,28 @@ public class Trip {
         }
         if (createdAt == null) createdAt = LocalDateTime.now();
         if (updatedAt == null) updatedAt = LocalDateTime.now();
+
+        if (startLatitude == null && startLat != null) startLatitude = startLat;
+        if (startLat == null && startLatitude != null) startLat = startLatitude;
+        if (startLongitude == null && startLng != null) startLongitude = startLng;
+        if (startLng == null && startLongitude != null) startLng = startLongitude;
+        if (endLatitude == null && endLat != null) endLatitude = endLat;
+        if (endLat == null && endLatitude != null) endLat = endLatitude;
+        if (endLongitude == null && endLng != null) endLongitude = endLng;
+        if (endLng == null && endLongitude != null) endLng = endLongitude;
     }
 
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+        if (startLatitude == null && startLat != null) startLatitude = startLat;
+        if (startLat == null && startLatitude != null) startLat = startLatitude;
+        if (startLongitude == null && startLng != null) startLongitude = startLng;
+        if (startLng == null && startLongitude != null) startLng = startLongitude;
+        if (endLatitude == null && endLat != null) endLatitude = endLat;
+        if (endLat == null && endLatitude != null) endLat = endLatitude;
+        if (endLongitude == null && endLng != null) endLongitude = endLng;
+        if (endLng == null && endLongitude != null) endLng = endLongitude;
     }
 
     // Getters and Setters
@@ -137,20 +166,56 @@ public class Trip {
     public String getStartLocation() { return startLocation; }
     public void setStartLocation(String startLocation) { this.startLocation = startLocation; }
 
-    public Double getStartLat() { return startLat; }
-    public void setStartLat(Double startLat) { this.startLat = startLat; }
+    public Double getStartLat() { return startLat != null ? startLat : startLatitude; }
+    public void setStartLat(Double startLat) {
+        this.startLat = startLat;
+        if (this.startLatitude == null) this.startLatitude = startLat;
+    }
 
-    public Double getStartLng() { return startLng; }
-    public void setStartLng(Double startLng) { this.startLng = startLng; }
+    public Double getStartLatitude() { return startLatitude != null ? startLatitude : startLat; }
+    public void setStartLatitude(Double startLatitude) {
+        this.startLatitude = startLatitude;
+        if (this.startLat == null) this.startLat = startLatitude;
+    }
+
+    public Double getStartLng() { return startLng != null ? startLng : startLongitude; }
+    public void setStartLng(Double startLng) {
+        this.startLng = startLng;
+        if (this.startLongitude == null) this.startLongitude = startLng;
+    }
+
+    public Double getStartLongitude() { return startLongitude != null ? startLongitude : startLng; }
+    public void setStartLongitude(Double startLongitude) {
+        this.startLongitude = startLongitude;
+        if (this.startLng == null) this.startLng = startLongitude;
+    }
 
     public String getEndLocation() { return endLocation; }
     public void setEndLocation(String endLocation) { this.endLocation = endLocation; }
 
-    public Double getEndLat() { return endLat; }
-    public void setEndLat(Double endLat) { this.endLat = endLat; }
+    public Double getEndLat() { return endLat != null ? endLat : endLatitude; }
+    public void setEndLat(Double endLat) {
+        this.endLat = endLat;
+        if (this.endLatitude == null) this.endLatitude = endLat;
+    }
 
-    public Double getEndLng() { return endLng; }
-    public void setEndLng(Double endLng) { this.endLng = endLng; }
+    public Double getEndLatitude() { return endLatitude != null ? endLatitude : endLat; }
+    public void setEndLatitude(Double endLatitude) {
+        this.endLatitude = endLatitude;
+        if (this.endLat == null) this.endLat = endLatitude;
+    }
+
+    public Double getEndLng() { return endLng != null ? endLng : endLongitude; }
+    public void setEndLng(Double endLng) {
+        this.endLng = endLng;
+        if (this.endLongitude == null) this.endLongitude = endLng;
+    }
+
+    public Double getEndLongitude() { return endLongitude != null ? endLongitude : endLng; }
+    public void setEndLongitude(Double endLongitude) {
+        this.endLongitude = endLongitude;
+        if (this.endLng == null) this.endLng = endLongitude;
+    }
 
     public String getStartTime() { return startTime; }
     public void setStartTime(String startTime) { this.startTime = startTime; }

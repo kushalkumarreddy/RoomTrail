@@ -44,8 +44,14 @@ public class Visit {
     @Column(name = "visit_lat")
     private Double visitLat;
 
+    @Column(name = "latitude")
+    private Double latitude;
+
     @Column(name = "visit_lng")
     private Double visitLng;
+
+    @Column(name = "longitude")
+    private Double longitude;
 
     @Column(name = "visit_status", length = 50)
     private String visitStatus = "confirmed";
@@ -76,6 +82,10 @@ public class Visit {
         if (createdAt == null) createdAt = LocalDateTime.now();
         if (visitedAt == null && arrivalTime != null) visitedAt = arrivalTime;
         if (arrivalTime == null && visitedAt != null) arrivalTime = visitedAt;
+        if (latitude == null && visitLat != null) latitude = visitLat;
+        if (visitLat == null && latitude != null) visitLat = latitude;
+        if (longitude == null && visitLng != null) longitude = visitLng;
+        if (visitLng == null && longitude != null) visitLng = longitude;
     }
 
     // Getters and Setters
@@ -127,11 +137,29 @@ public class Visit {
     public String getDepartureTime() { return departureTime; }
     public void setDepartureTime(String departureTime) { this.departureTime = departureTime; }
 
-    public Double getVisitLat() { return visitLat; }
-    public void setVisitLat(Double visitLat) { this.visitLat = visitLat; }
+    public Double getVisitLat() { return visitLat != null ? visitLat : latitude; }
+    public void setVisitLat(Double visitLat) {
+        this.visitLat = visitLat;
+        if (this.latitude == null) this.latitude = visitLat;
+    }
 
-    public Double getVisitLng() { return visitLng; }
-    public void setVisitLng(Double visitLng) { this.visitLng = visitLng; }
+    public Double getLatitude() { return latitude != null ? latitude : visitLat; }
+    public void setLatitude(Double latitude) {
+        this.latitude = latitude;
+        if (this.visitLat == null) this.visitLat = latitude;
+    }
+
+    public Double getVisitLng() { return visitLng != null ? visitLng : longitude; }
+    public void setVisitLng(Double visitLng) {
+        this.visitLng = visitLng;
+        if (this.longitude == null) this.longitude = visitLng;
+    }
+
+    public Double getLongitude() { return longitude != null ? longitude : visitLng; }
+    public void setLongitude(Double longitude) {
+        this.longitude = longitude;
+        if (this.visitLng == null) this.visitLng = longitude;
+    }
 
     public String getVisitStatus() { return visitStatus; }
     public void setVisitStatus(String visitStatus) { this.visitStatus = visitStatus; }
@@ -150,12 +178,6 @@ public class Visit {
 
     public Integer getVisitNumber() { return visitNumber != null ? visitNumber : 1; }
     public void setVisitNumber(Integer visitNumber) { this.visitNumber = visitNumber; }
-
-    public Double getLatitude() { return visitLat; }
-    public void setLatitude(Double latitude) { this.visitLat = latitude; }
-
-    public Double getLongitude() { return visitLng; }
-    public void setLongitude(Double longitude) { this.visitLng = longitude; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

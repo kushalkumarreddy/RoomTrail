@@ -50,7 +50,7 @@ public class TripSummaryService {
 
     @Transactional
     public TripSummary create(TripSummary summary, Long userId) {
-        if (userId != null && summary.getUserId() == null) {
+        if (userId != null) {
             summary.setUserId(userId);
         }
         if (summary.getId() == null || summary.getId().trim().isEmpty()) {

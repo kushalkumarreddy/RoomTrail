@@ -11,4 +11,6 @@ import java.util.Optional;
 public interface TripSummaryRepository extends JpaRepository<TripSummary, String> {
     List<TripSummary> findByUserId(Long userId);
     Optional<TripSummary> findByTripId(String tripId);
+    void deleteByUserId(Long userId);
+    void deleteByTripId(String tripId);
 }

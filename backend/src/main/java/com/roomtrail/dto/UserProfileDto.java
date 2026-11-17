@@ -30,7 +30,9 @@ public class UserProfileDto {
         dto.setEmail(user.getEmail());
         dto.setFullName(user.getFullName());
         dto.setPhone(user.getPhone());
-        dto.setRole(user.getRole());
+        String rawRole = user.getRole() != null ? user.getRole().trim().toUpperCase() : "USER";
+        String cleanRole = rawRole.startsWith("ROLE_") ? rawRole.substring(5) : rawRole;
+        dto.setRole(cleanRole);
         dto.setBio(user.getBio());
         dto.setTravelMode(user.getTravelMode());
         dto.setCity(user.getCity());

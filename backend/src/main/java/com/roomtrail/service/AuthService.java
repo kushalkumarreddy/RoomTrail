@@ -60,15 +60,20 @@ public class AuthService {
     }
 
     public AuthResponse login(AuthRequest request) {
-        // Authenticate with Spring Security
+        String identifier = request.getIdentifier();
+        if (identifier == null || identifier.trim().isEmpty() || request.getPassword() == null || request.getPassword().trim().isEmpty()) {
+            throw new BadRequestException("Username and password are required.");
+        }
+
+        // Authenticate with Spring Security using either username or email
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
+                new UsernamePasswordAuthenticationToken(identifier.trim(), request.getPassword())
         );
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
-        User user = userRepository.findByEmail(request.getEmail())
-                .or(() -> userRepository.findByUsername(request.getEmail()))
+        User user = userRepository.findByUsername(identifier.trim())
+                .or(() -> userRepository.findByEmail(identifier.trim()))
                 .orElseThrow(() -> new BadRequestException("Invalid credentials"));
 
         String token = tokenProvider.generateToken(authentication);

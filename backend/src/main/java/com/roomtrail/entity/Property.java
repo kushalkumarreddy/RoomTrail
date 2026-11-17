@@ -49,6 +49,9 @@ public class Property {
     @Column(name = "contact_phone", length = 40)
     private String contactPhone;
 
+    @Column(name = "contact_number", length = 40)
+    private String contactNumber;
+
     @Column(name = "contact_details", length = 200)
     private String contactDetails;
 
@@ -63,6 +66,9 @@ public class Property {
 
     @Column(name = "visited_at")
     private String visitedAt;
+
+    @Column(name = "last_visited_at")
+    private String lastVisitedAt;
 
     @Column(name = "created_date")
     private String createdDate;
@@ -89,11 +95,19 @@ public class Property {
         if (createdAt == null) createdAt = LocalDateTime.now();
         if (updatedAt == null) updatedAt = LocalDateTime.now();
         if (createdDate == null) createdDate = LocalDateTime.now().toString();
+        if (contactNumber == null && contactPhone != null) contactNumber = contactPhone;
+        if (contactPhone == null && contactNumber != null) contactPhone = contactNumber;
+        if (lastVisitedAt == null && visitedAt != null) lastVisitedAt = visitedAt;
+        if (visitedAt == null && lastVisitedAt != null) visitedAt = lastVisitedAt;
     }
 
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
+        if (contactNumber == null && contactPhone != null) contactNumber = contactPhone;
+        if (contactPhone == null && contactNumber != null) contactPhone = contactNumber;
+        if (lastVisitedAt == null && visitedAt != null) lastVisitedAt = visitedAt;
+        if (visitedAt == null && lastVisitedAt != null) visitedAt = lastVisitedAt;
     }
 
     // Getters and Setters
@@ -151,8 +165,18 @@ public class Property {
     public String getContactPerson() { return contactPerson; }
     public void setContactPerson(String contactPerson) { this.contactPerson = contactPerson; }
 
-    public String getContactPhone() { return contactPhone; }
-    public void setContactPhone(String contactPhone) { this.contactPhone = contactPhone; }
+    public String getContactPhone() { return contactPhone != null ? contactPhone : contactNumber; }
+    public void setContactPhone(String contactPhone) {
+        this.contactPhone = contactPhone;
+        if (this.contactNumber == null) this.contactNumber = contactPhone;
+    }
+
+    public String getContactNumber() { return contactNumber != null ? contactNumber : contactPhone; }
+    public void setContactNumber(String contactNumber) {
+        this.contactNumber = contactNumber;
+        if (this.contactPhone == null) this.contactPhone = contactNumber;
+        if (this.contactDetails == null) this.contactDetails = contactNumber;
+    }
 
     public String getContactDetails() { return contactDetails; }
     public void setContactDetails(String contactDetails) { this.contactDetails = contactDetails; }
@@ -166,8 +190,17 @@ public class Property {
     public String getVisitStatus() { return visitStatus; }
     public void setVisitStatus(String visitStatus) { this.visitStatus = visitStatus; }
 
-    public String getVisitedAt() { return visitedAt; }
-    public void setVisitedAt(String visitedAt) { this.visitedAt = visitedAt; }
+    public String getVisitedAt() { return visitedAt != null ? visitedAt : lastVisitedAt; }
+    public void setVisitedAt(String visitedAt) {
+        this.visitedAt = visitedAt;
+        if (this.lastVisitedAt == null) this.lastVisitedAt = visitedAt;
+    }
+
+    public String getLastVisitedAt() { return lastVisitedAt != null ? lastVisitedAt : visitedAt; }
+    public void setLastVisitedAt(String lastVisitedAt) {
+        this.lastVisitedAt = lastVisitedAt;
+        if (this.visitedAt == null) this.visitedAt = lastVisitedAt;
+    }
 
     public String getCreatedDate() { return createdDate; }
     public void setCreatedDate(String createdDate) { this.createdDate = createdDate; }

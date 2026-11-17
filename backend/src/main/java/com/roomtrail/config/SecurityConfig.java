@@ -65,18 +65,18 @@ public class SecurityConfig {
         http
             .cors(Customizer.withDefaults())
             .csrf(AbstractHttpConfigurer::disable)
+            .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> {
+                response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"Authentication required to access this resource\"}");
+            }))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/geocode/**").permitAll()
                 .requestMatchers("/error").permitAll()
-                // Allow read-only exploration or authenticated endpoints
-                .requestMatchers(HttpMethod.GET, "/api/properties/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/trips/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/visits/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/routePoints/**", "/api/route-points/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/tripSummaries/**", "/api/trip-summaries/**").permitAll()
                 .anyRequest().authenticated()
             );
 
@@ -89,7 +89,12 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        List<String> origins = Arrays.asList(allowedOrigins.split(","));
+        List<String> origins = allowedOrigins != null && !allowedOrigins.trim().isEmpty()
+                ? Arrays.stream(allowedOrigins.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .toList()
+                : java.util.Collections.emptyList();
         configuration.setAllowedOrigins(origins);
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
