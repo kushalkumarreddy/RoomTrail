@@ -11,8 +11,10 @@ import java.util.Optional;
 @Repository
 public interface PropertyRepository extends JpaRepository<Property, String> {
     List<Property> findByUserId(Long userId);
+    List<Property> findByUserIdAndIsFavorite(Long userId, Boolean isFavorite);
     Optional<Property> findByIdAndUserId(String id, Long userId);
     long countByUserId(Long userId);
+    long countByUserIdAndIsFavorite(Long userId, Boolean isFavorite);
     void deleteByUserId(Long userId);
 
     @Query("SELECT p.category, COUNT(p) FROM Property p GROUP BY p.category")

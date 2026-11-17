@@ -27,7 +27,7 @@ public class RoutePointService {
 
     public List<RoutePoint> getAll(String tripId, String excludeTripId) {
         if (tripId != null && !tripId.trim().isEmpty()) {
-            return routePointRepository.findByTripIdOrderByTimestampAsc(tripId);
+            return routePointRepository.findByTripIdOrderedChronologically(tripId);
         }
         if (excludeTripId != null && !excludeTripId.trim().isEmpty()) {
             return routePointRepository.findByTripIdNotOrderByTimestampAsc(excludeTripId);
@@ -63,6 +63,26 @@ public class RoutePointService {
             point.setSequenceNumber(existing.size() + 1);
         }
         return routePointRepository.save(point);
+    }
+
+    @Transactional
+    public List<RoutePoint> saveBatch(String tripId, List<RoutePoint> points) {
+        if (points == null || points.isEmpty()) {
+            return Collections.emptyList();
+        }
+        for (int i = 0; i < points.size(); i++) {
+            RoutePoint p = points.get(i);
+            if (p.getTripId() == null || p.getTripId().trim().isEmpty()) {
+                p.setTripId(tripId);
+            }
+            if (p.getId() == null || p.getId().trim().isEmpty()) {
+                p.setId("pt_" + tripId + "_" + (p.getSequenceNumber() != null ? p.getSequenceNumber() : (System.currentTimeMillis() + "_" + i)));
+            }
+            if (p.getSequenceNumber() == null) {
+                p.setSequenceNumber(i + 1);
+            }
+        }
+        return routePointRepository.saveAll(points);
     }
 
     @Transactional

@@ -7,6 +7,7 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import Modal from '../../components/common/Modal';
+import GoogleMapsLocationLink from '../../components/common/GoogleMapsLocationLink';
 import { formatDateTime, formatDate, formatCoordinates, getCategoryIcon } from '../../utils/formatters';
 
 const VisitHistoryPage = () => {
@@ -138,8 +139,8 @@ const VisitHistoryPage = () => {
   // Open historical destination on map
   const handleOpenOnMap = (visit) => {
     const destId = visit.destinationId || visit.propertyId || '';
-    const lat = visit.latitude || visit.visitCoordinates?.lat || 12.9716;
-    const lng = visit.longitude || visit.visitCoordinates?.lng || 77.5946;
+    const lat = visit.latitude || visit.visitCoordinates?.lat || 17.4938;
+    const lng = visit.longitude || visit.visitCoordinates?.lng || 78.3968;
     navigate(`/map-explorer?placeId=${encodeURIComponent(destId)}&lat=${lat}&lng=${lng}`);
   };
 
@@ -386,9 +387,14 @@ const VisitHistoryPage = () => {
                     {/* Destination, Category, GPS */}
                     <td>
                       <div className="fw-bold text-dark fs-6">{v.propertyName || 'Saved Destination'}</div>
-                      <div className="text-muted small text-truncate" style={{ maxWidth: '300px' }}>
-                        <i className="bi bi-geo-alt me-1 text-danger"></i>
-                        {v.address || 'Address on record'}
+                      <div className="small text-truncate mb-1" style={{ maxWidth: '300px' }}>
+                        <GoogleMapsLocationLink
+                          place={{
+                            ...v,
+                            latitude: lat,
+                            longitude: lng,
+                          }}
+                        />
                       </div>
                       <div className="d-flex align-items-center gap-2 mt-1">
                         <span className="badge-rt badge-rt-primary" style={{ fontSize: '0.68rem' }}>
@@ -518,10 +524,11 @@ const VisitHistoryPage = () => {
             <div className="d-flex align-items-center justify-content-between pb-3 mb-3 border-bottom">
               <div>
                 <h5 className="fw-bold text-dark mb-1">{selectedVisit.propertyName}</h5>
-                <p className="text-muted small mb-0">
-                  <i className="bi bi-geo-alt me-1 text-danger"></i>
-                  {selectedVisit.address || 'Address on record'}
-                </p>
+                <div className="small mb-0">
+                  <GoogleMapsLocationLink
+                    place={selectedVisit}
+                  />
+                </div>
               </div>
               <span className="badge-rt badge-rt-primary text-uppercase">
                 <i className={`bi ${getCategoryIcon(selectedVisit.category)}`}></i>

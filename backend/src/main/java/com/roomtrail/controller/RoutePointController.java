@@ -98,7 +98,7 @@ public class RoutePointController {
 
     private boolean isOwner(String entityUserId, Long authenticatedId) {
         if (authenticatedId == null) return false;
-        if (entityUserId == null) return true;
+        if (entityUserId == null) return false;
         try {
             return Long.parseLong(entityUserId.trim()) == authenticatedId;
         } catch (NumberFormatException e) {

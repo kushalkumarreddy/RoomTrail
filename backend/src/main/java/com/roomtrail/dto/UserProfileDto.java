@@ -38,8 +38,8 @@ public class UserProfileDto {
         dto.setCity(user.getCity());
 
         Map<String, Double> coords = new HashMap<>();
-        coords.put("lat", user.getHomeLat() != null ? user.getHomeLat() : 12.9716);
-        coords.put("lng", user.getHomeLng() != null ? user.getHomeLng() : 77.5946);
+        coords.put("lat", user.getHomeLat() != null ? user.getHomeLat() : 17.4938);
+        coords.put("lng", user.getHomeLng() != null ? user.getHomeLng() : 78.3968);
         dto.setHomeCoordinates(coords);
 
         dto.setNotificationRadiusMeters(user.getNotificationRadiusMeters());

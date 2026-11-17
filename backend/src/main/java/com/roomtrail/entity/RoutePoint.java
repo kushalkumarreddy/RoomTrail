@@ -33,6 +33,9 @@ public class RoutePoint {
     @Column(name = "sequence_number")
     private Integer sequenceNumber = 1;
 
+    @Column(name = "segment_index")
+    private Integer segmentIndex = 0;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -83,6 +86,9 @@ public class RoutePoint {
 
     public Integer getSequenceNumber() { return sequenceNumber != null ? sequenceNumber : 1; }
     public void setSequenceNumber(Integer sequenceNumber) { this.sequenceNumber = sequenceNumber; }
+
+    public Integer getSegmentIndex() { return segmentIndex != null ? segmentIndex : 0; }
+    public void setSegmentIndex(Integer segmentIndex) { this.segmentIndex = segmentIndex; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

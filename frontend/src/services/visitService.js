@@ -33,7 +33,7 @@ export const visitService = {
       departureTime: visitData.departureTime || null,
       visitLat: visitData.latitude ?? visitData.visitCoordinates?.lat ?? null,
       visitLng: visitData.longitude ?? visitData.visitCoordinates?.lng ?? null,
-      visitCoordinates: visitData.visitCoordinates || (visitData.latitude && visitData.longitude ? { lat: visitData.latitude, lng: visitData.longitude } : { lat: 12.9716, lng: 77.6412 }),
+      visitCoordinates: visitData.visitCoordinates || (visitData.latitude && visitData.longitude ? { lat: visitData.latitude, lng: visitData.longitude } : { lat: 17.4938, lng: 78.3968 }),
       visitStatus: visitData.visitStatus || visitData.status || 'confirmed', // 'confirmed', 'skipped', 'revisited'
       status: visitData.status || visitData.visitStatus || 'confirmed',
       notes: visitData.notes || '',
@@ -60,8 +60,8 @@ export const visitService = {
    */
   normalize: (visit) => {
     if (!visit) return visit;
-    const lat = visit.visitLat ?? visit.latitude ?? visit.visitCoordinates?.lat ?? 12.9716;
-    const lng = visit.visitLng ?? visit.longitude ?? visit.visitCoordinates?.lng ?? 77.5946;
+    const lat = visit.visitLat ?? visit.latitude ?? visit.visitCoordinates?.lat ?? 17.4938;
+    const lng = visit.visitLng ?? visit.longitude ?? visit.visitCoordinates?.lng ?? 78.3968;
     const vNum = visit.visitNumber || (visit.isRevisit ? 2 : 1);
     return {
       ...visit,

@@ -18,6 +18,8 @@ import {
   formatCoordinates,
   getCategoryIcon,
   calculateDistanceMeters,
+  hasSufficientGpsRoute,
+  buildRouteSegments,
 } from '../../utils/formatters';
 import { isValidCoordinate } from '../../utils/validators';
 
@@ -142,8 +144,8 @@ const TripSummaryPage = () => {
       leafletMapInstance.current = null;
     }
 
-    const startLat = selectedTrip.startCoordinates?.lat || 12.9716;
-    const startLng = selectedTrip.startCoordinates?.lng || 77.5946;
+    const startLat = selectedTrip.startCoordinates?.lat || 17.4938;
+    const startLng = selectedTrip.startCoordinates?.lng || 78.3968;
 
     const map = L.map(mapContainerRef.current, {
       center: [startLat, startLng],
@@ -242,41 +244,19 @@ const TripSummaryPage = () => {
           return String(a.id || '').localeCompare(String(b.id || ''));
         });
 
-      const isTwoPointEndpointsOnly =
-        sortedRoutePoints.length === 2 &&
-        calculateDistanceMeters(
-          sortedRoutePoints[0].latitude, sortedRoutePoints[0].longitude,
-          sortedRoutePoints[1].latitude, sortedRoutePoints[1].longitude
-        ) > 200;
+      const hasRoute = hasSufficientGpsRoute(sortedRoutePoints);
 
-      if (sortedRoutePoints.length >= 2 && !isTwoPointEndpointsOnly) {
+      if (hasRoute) {
         // Mode A: Actual recorded GPS breadcrumbs (chronological sequence connects curves and turns)
-        polylinePoints = sortedRoutePoints.map((pt) => [pt.latitude, pt.longitude]);
+        const segments = buildRouteSegments(sortedRoutePoints);
+        polylinePoints = segments;
         setRouteTypeLabel('historical');
         setRouteErrorMsg(null);
-      } else if (isTwoPointEndpointsOnly) {
+      } else {
+        // Insufficient GPS breadcrumb points
         polylinePoints = [];
         setRouteTypeLabel('none');
-        setRouteErrorMsg('Exact historical path cannot be recovered for this older trip as only starting and ending coordinates were recorded.');
-      } else if (waypoints.length >= 2) {
-        // Mode B: OSRM Turn-by-Turn Road Route (Never straight lines)
-        try {
-          const multiRoute = await routingService.getMultiStopRoadRoute({
-            waypoints,
-            profile: selectedTrip.travelMode || 'driving',
-          });
-          polylinePoints = multiRoute.coordinates;
-          setRouteTypeLabel('planned');
-          setRouteErrorMsg(null);
-        } catch (err) {
-          console.warn('Road routing service unavailable', err);
-          polylinePoints = [];
-          setRouteTypeLabel('none');
-          setRouteErrorMsg('Historical GPS path is unavailable, and road routing service could not be reached. Straight lines are not drawn as road routes.');
-        }
-      } else {
-        setRouteTypeLabel('none');
-        setRouteErrorMsg('Insufficient waypoint data to construct route.');
+        setRouteErrorMsg('Detailed GPS route was not recorded for this trip.');
       }
 
       if (polylinePoints.length > 0) {
@@ -293,8 +273,11 @@ const TripSummaryPage = () => {
         routePolylineRef.current = polyline;
         map.fitBounds(polyline.getBounds(), { padding: [50, 50], maxZoom: 16 });
 
-        // Store points for route playback
-        setPlaybackPoints(polylinePoints);
+        // Store flat points for route playback
+        const flatPoints = Array.isArray(polylinePoints[0]?.[0])
+          ? polylinePoints.flat()
+          : polylinePoints;
+        setPlaybackPoints(flatPoints);
 
         // Initialize traveler marker at starting point
         const travelerIcon = L.divIcon({
@@ -304,7 +287,7 @@ const TripSummaryPage = () => {
           iconAnchor: [14, 14],
         });
 
-        const initialPoint = polylinePoints[0];
+        const initialPoint = flatPoints[0];
         travelerMarkerRef.current = L.marker(initialPoint, {
           icon: travelerIcon,
           zIndexOffset: 1200,
@@ -511,8 +494,8 @@ const TripSummaryPage = () => {
             <div className="text-muted small">
               Coordinates:{' '}
               {formatCoordinates(
-                selectedTrip.startCoordinates?.lat || 12.9716,
-                selectedTrip.startCoordinates?.lng || 77.5946
+                selectedTrip.startCoordinates?.lat || 17.4938,
+                selectedTrip.startCoordinates?.lng || 78.3968
               )}
             </div>
           </div>
@@ -527,8 +510,8 @@ const TripSummaryPage = () => {
             <div className="text-muted small">
               Coordinates:{' '}
               {formatCoordinates(
-                selectedTrip.endCoordinates?.lat || 12.9784,
-                selectedTrip.endCoordinates?.lng || 77.6408
+                selectedTrip.endCoordinates?.lat || 17.4504,
+                selectedTrip.endCoordinates?.lng || 78.3811
               )}
             </div>
           </div>

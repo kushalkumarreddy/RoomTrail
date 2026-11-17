@@ -37,7 +37,7 @@ export const authService = {
         password: userData.password,
         fullName: userData.fullName?.trim() || userData.username,
         phone: userData.phone?.trim() || '',
-        city: userData.city || 'Bengaluru, India',
+        city: userData.city || 'Hyderabad, India',
         travelMode: userData.travelMode || 'car',
       });
 

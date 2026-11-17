@@ -187,7 +187,7 @@ export const geocodingService = {
       address.county ||
       '';
     const stateOrCountry = address.state || address.country || '';
-    const formattedCity = [cityName, stateOrCountry].filter(Boolean).join(', ') || 'Bengaluru, India';
+    const formattedCity = [cityName, stateOrCountry].filter(Boolean).join(', ') || 'Hyderabad, India';
 
     // 5. Category inference
     let recommendedCategory = null;

@@ -22,7 +22,7 @@ export const routePointService = {
       });
     } catch {
       // Fallback for query param style if needed
-      const fallback = await apiClient.get('/routePoints', { params: { tripId } });
+      const fallback = await apiClient.get('/route-points', { params: { tripId } });
       const points = fallback.data || [];
       return points.sort((a, b) => {
         const seqA = a.sequenceNumber != null ? a.sequenceNumber : 0;
@@ -60,19 +60,57 @@ export const routePointService = {
         const response = await apiClient.post(`/trips/${payload.tripId}/route-points`, payload);
         return response.data;
       } catch (err) {
-        console.warn('POST /trips/{id}/route-points failed, falling back to /routePoints', err);
+        console.warn('POST /trips/{id}/route-points failed, falling back to /route-points', err);
       }
     }
 
-    const response = await apiClient.post('/routePoints', payload);
+    const response = await apiClient.post('/route-points', payload);
     return response.data;
+  },
+
+  /**
+   * Batch persist an array of route breadcrumb points to Spring Boot backend
+   */
+  createBatch: async (tripId, points) => {
+    if (!points || points.length === 0) return [];
+    const formattedPoints = points.map((p, idx) => ({
+      id: p.id || `pt_${tripId}_${p.sequenceNumber || Date.now() + '_' + idx}`,
+      tripId: tripId,
+      latitude: p.latitude || p.lat,
+      longitude: p.longitude || p.lng,
+      accuracy: p.accuracy ? Math.round(p.accuracy) : 6,
+      speed: p.speed !== undefined ? p.speed : 0,
+      heading: p.heading !== undefined ? p.heading : 0,
+      sequenceNumber: p.sequenceNumber || idx + 1,
+      segmentIndex: p.segmentIndex !== undefined ? p.segmentIndex : 0,
+      timestamp: p.timestamp || p.recordedAt || new Date().toISOString(),
+      recordedAt: p.recordedAt || p.timestamp || new Date().toISOString(),
+    }));
+
+    try {
+      const response = await apiClient.post(`/trips/${tripId}/route-points/batch`, formattedPoints);
+      return response.data;
+    } catch (err) {
+      // Fallback: save individually
+      const results = [];
+      for (const pt of formattedPoints) {
+        try {
+          const res = await apiClient.post(`/trips/${tripId}/route-points`, pt);
+          results.push(res.data);
+        } catch {
+          const res = await apiClient.post('/route-points', pt);
+          results.push(res.data);
+        }
+      }
+      return results;
+    }
   },
 
   /**
    * Fetch all route points
    */
   getAll: async (params = {}) => {
-    const response = await apiClient.get('/routePoints', { params });
+    const response = await apiClient.get('/route-points', { params });
     return response.data || [];
   },
 
@@ -81,7 +119,7 @@ export const routePointService = {
    */
   getPreviousRoutePoints: async (excludeTripId) => {
     const params = excludeTripId ? { excludeTripId } : {};
-    const response = await apiClient.get('/routePoints', { params });
+    const response = await apiClient.get('/route-points', { params });
     return response.data || [];
   },
 
@@ -89,7 +127,7 @@ export const routePointService = {
    * Delete a single route point
    */
   delete: async (id) => {
-    const response = await apiClient.delete(`/routePoints/${id}`);
+    const response = await apiClient.delete(`/route-points/${id}`);
     return response.data;
   },
 
@@ -98,12 +136,12 @@ export const routePointService = {
    */
   deleteByTripId: async (tripId) => {
     try {
-      const response = await apiClient.delete(`/routePoints/trip/${tripId}`);
+      const response = await apiClient.delete(`/route-points/trip/${tripId}`);
       return response.data;
     } catch {
       const points = await routePointService.getByTripId(tripId);
       for (const pt of points) {
-        await apiClient.delete(`/routePoints/${pt.id}`);
+        await apiClient.delete(`/route-points/${pt.id}`);
       }
       return true;
     }

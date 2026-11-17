@@ -147,7 +147,7 @@ const AddRoomDetailsModal = ({
             <input
               type="text"
               className="form-control form-control-sm bg-light"
-              value={property.city || 'Bengaluru'}
+              value={property.city || 'Hyderabad'}
               readOnly
             />
           </div>

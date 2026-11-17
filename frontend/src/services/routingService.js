@@ -159,7 +159,7 @@ export const routingService = {
    * Allows the user to reorder destinations, view savings, and optimize travel time.
    */
   optimizeTripRoute: async ({
-    startLocation = { lat: 12.9716, lng: 77.5946, name: 'Start Location' },
+    startLocation = { lat: 17.4938, lng: 78.3968, name: 'Start Location' },
     destinations = [],
     profile = 'driving',
     factorPriority = true,

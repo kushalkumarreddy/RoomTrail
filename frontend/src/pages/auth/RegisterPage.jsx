@@ -11,7 +11,7 @@ const RegisterPage = () => {
     email: '',
     phone: '',
     travelMode: 'car',
-    city: 'Bengaluru, India',
+    city: 'Hyderabad, Telangana',
     password: '',
     confirmPassword: '',
   });
@@ -215,7 +215,7 @@ const RegisterPage = () => {
                   type="text"
                   name="city"
                   className="form-control"
-                  placeholder="e.g. Bengaluru, India"
+                  placeholder="e.g. Hyderabad, Telangana"
                   value={formData.city}
                   onChange={handleChange}
                 />

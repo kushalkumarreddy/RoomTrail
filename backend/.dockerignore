@@ -1,0 +1,36 @@
+# Target build artifacts
+target/
+*.jar
+*.war
+
+# Version control
+.git/
+.gitignore
+
+# IDE and Editor configuration
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Environment and sensitive credentials
+.env
+.env.*
+!.env.example
+
+# Logs and runtime artifacts
+logs/
+*.log
+npm-debug.log*
+
+# Database dumps and backups
+database_backup/
+*.sql
+*.sql.gz
+*.tar.gz
+
+# Temporary directories
+tmp/
+temp/
+scratch/

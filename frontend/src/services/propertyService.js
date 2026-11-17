@@ -47,7 +47,7 @@ export const propertyService = {
       name: data.name ? data.name.trim() : 'Unnamed Destination',
       category: (data.category || 'flat').toLowerCase(),
       address: data.address ? data.address.trim() : '',
-      city: data.city || 'Bengaluru',
+      city: data.city || 'Hyderabad',
       latitude: data.latitude !== null && data.latitude !== undefined && data.latitude !== '' ? parseFloat(data.latitude) : null,
       longitude: data.longitude !== null && data.longitude !== undefined && data.longitude !== '' ? parseFloat(data.longitude) : null,
       description: data.description || data.notes || '',
@@ -100,6 +100,42 @@ export const propertyService = {
   },
 
   /**
+   * Update personal notes for a visited location / property
+   */
+  updateNotes: async (id, notes) => {
+    const payload = { notes: notes !== null && notes !== undefined ? notes : '' };
+    const response = await apiClient.patch(`/properties/${id}/notes`, payload);
+    return propertyService.normalize(response.data);
+  },
+
+  /**
+   * Mark or remove a property as favourite (Phase 3)
+   */
+  toggleFavorite: async (id, favorite = null) => {
+    const payload = favorite !== null ? { favorite } : {};
+    const response = await apiClient.patch(`/properties/${id}/favorite`, payload);
+    return response.data;
+  },
+
+  /**
+   * Fetch all favourite properties for the authenticated user (Phase 3)
+   */
+  getFavorites: async () => {
+    const response = await apiClient.get('/properties/favorites');
+    const properties = response.data || [];
+    return properties.map(propertyService.normalize);
+  },
+
+  /**
+   * Compare multiple saved rooms side-by-side (Phase 2)
+   */
+  compare: async (propertyIds, refLat = null, refLng = null) => {
+    const payload = { propertyIds, refLat, refLng };
+    const response = await apiClient.post('/properties/compare', payload);
+    return response.data || [];
+  },
+
+  /**
    * Delete a saved property
    */
   delete: async (id) => {
@@ -128,6 +164,8 @@ export const propertyService = {
       contactPhone: item.contactPhone || (item.contactDetails && item.contactDetails.includes(':') ? item.contactDetails.split(':')[1]?.trim() : item.contactDetails || ''),
       visitStatus: isVisited ? 'visited' : 'pending',
       visited: isVisited,
+      isFavorite: Boolean(item.isFavorite || item.favorite),
+      favorite: Boolean(item.isFavorite || item.favorite),
       createdDate: item.createdDate || item.createdAt || '',
       createdAt: item.createdAt || item.createdDate || '',
     };

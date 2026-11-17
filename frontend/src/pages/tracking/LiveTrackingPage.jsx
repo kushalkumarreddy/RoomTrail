@@ -11,15 +11,22 @@ import {
   routePointService,
   tripSummaryService,
   geocodingService,
+  trackingService,
 } from '../../services';
 import Modal from '../../components/common/Modal';
 import QuickAddPlaceModal from '../../components/places/QuickAddPlaceModal';
 import AddRoomDetailsModal from '../../components/places/AddRoomDetailsModal';
+import LocationNotesModal from '../../components/places/LocationNotesModal';
+import TrackingSafetySettingsModal from '../../components/tracking/TrackingSafetySettingsModal';
+import StartTrackingConfirmModal from '../../components/tracking/StartTrackingConfirmModal';
+import StopTrackingConfirmModal from '../../components/tracking/StopTrackingConfirmModal';
+import GoogleMapsLocationLink from '../../components/common/GoogleMapsLocationLink';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import {
   formatDate,
   formatDistance,
   calculateDistanceMeters,
+  buildRouteSegments,
   formatDurationSeconds,
   formatCoordinates,
   getCategoryIcon,
@@ -28,7 +35,9 @@ import {
   matchRepeatedRoute,
   haversineDistanceMeters,
   calculateBearing,
+  getAngularDifference,
 } from '../../utils/routeMatching';
+import { gpsQueue } from '../../utils/gpsQueue';
 
 const LiveTrackingPage = () => {
   const { user } = useAuth();
@@ -69,6 +78,57 @@ const LiveTrackingPage = () => {
   // Maps placeId -> { status: 'idle'|'prompted'|'confirmed'|'dismissed'|'snoozed', snoozeUntil: number }
   const encounterTrackerRef = useRef({});
 
+  // Phase 5: Nearby Saved Rooms Detection & Notification Preferences
+  const [nearbyPreferences, setNearbyPreferences] = useState(() => {
+    try {
+      const key = `roomtrail_nearby_preferences_${user?.id || 'default'}`;
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          enabled: parsed.enabled !== undefined ? Boolean(parsed.enabled) : true,
+          radius: [100, 200, 500].includes(Number(parsed.radius)) ? Number(parsed.radius) : 200,
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to load nearby preferences from localStorage', e);
+    }
+    return { enabled: true, radius: 200 };
+  });
+
+  const updateNearbyPreferences = useCallback((updates) => {
+    setNearbyPreferences((prev) => {
+      const next = { ...prev, ...updates };
+      try {
+        const key = `roomtrail_nearby_preferences_${user?.id || 'default'}`;
+        localStorage.setItem(key, JSON.stringify(next));
+      } catch (e) {
+        console.warn('Failed to persist nearby preferences', e);
+      }
+      return next;
+    });
+  }, [user]);
+
+  // Per-trip notification encounter history: roomId -> { status: 'notified'|'exited', lastNotifiedAt: number, distance: number }
+  const nearbyNotificationHistoryRef = useRef({});
+  const [nearbyRoomAlert, setNearbyRoomAlert] = useState(null); // { room, distance }
+  const [showNearbySettings, setShowNearbySettings] = useState(false);
+  const [selectedNearbyRoom, setSelectedNearbyRoom] = useState(null);
+  const [isNearbyRoomDetailsOpen, setIsNearbyRoomDetailsOpen] = useState(false);
+
+  // Phase 8: Tracking Safety & Control States
+  const [safetyPreferences, setSafetyPreferences] = useState({
+    trackingConfirmation: true,
+    accuracyWarningMeters: 50,
+    trackingReminderMinutes: 60,
+    privacyReminderAcknowledged: true,
+  });
+  const [isSafetySettingsOpen, setIsSafetySettingsOpen] = useState(false);
+  const [isStartConfirmModalOpen, setIsStartConfirmModalOpen] = useState(false);
+  const [isStopConfirmModalOpen, setIsStopConfirmModalOpen] = useState(false);
+  const [trackingReminderNotice, setTrackingReminderNotice] = useState(null);
+  const reminderDismissedIntervalRef = useRef(null);
+
   // Visit Confirmation & Revisit Alert Modal State
   const [isVisitModalOpen, setIsVisitModalOpen] = useState(false);
   const [promptDestination, setPromptDestination] = useState(null);
@@ -98,6 +158,8 @@ const LiveTrackingPage = () => {
   const [autoSavedStop, setAutoSavedStop] = useState(null); // Property object saved automatically
   const [selectedAutoProperty, setSelectedAutoProperty] = useState(null);
   const [isRoomDetailsModalOpen, setIsRoomDetailsModalOpen] = useState(false);
+  const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
+  const [notesModalProperty, setNotesModalProperty] = useState(null);
   const stationaryWindowRef = useRef({
     anchorPoint: null,
     points: [],
@@ -145,25 +207,55 @@ const LiveTrackingPage = () => {
   // Trip & Geolocation Sequence Tracking Refs (Eliminates async state lag & closure issues)
   const activeTripRef = useRef(null);
   const sequenceNumberRef = useRef(0);
+  const segmentIndexRef = useRef(0);
+  const lastBearingRef = useRef(null);
   const routeBreadcrumbsRef = useRef([]);
   const liveStartMarkerRef = useRef(null);
 
+  // Phase 9: Live Route Diagnostics Telemetry State
+  const [gpsDiagnostics, setGpsDiagnostics] = useState(() => gpsQueue.stats);
+  const [showDiagnosticsPanel, setShowDiagnosticsPanel] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = gpsQueue.subscribe((stats) => {
+      setGpsDiagnostics(stats);
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    gpsQueue.setTrackingMeta({
+      tripId: activeTripRef.current?.id || selectedTrip?.id,
+      activeWatchers: watchIdRef.current !== null ? 1 : 0,
+    });
+  }, [selectedTrip]);
+
   // Home base fallback coordinates
   const homeCoords = useRef({
-    lat: user?.homeCoordinates?.lat || 12.9716,
-    lng: user?.homeCoordinates?.lng || 77.5946,
+    lat: user?.homeCoordinates?.lat || 17.4938,
+    lng: user?.homeCoordinates?.lng || 78.3968,
   }).current;
 
   // 1. Initial Data Fetching & Active Session Restoration
   const loadInitialData = useCallback(async () => {
     setLoading(true);
     try {
-      const [placesData, tripsData, visitsData, allRoutePoints] = await Promise.all([
+      const [placesData, tripsData, visitsData, allRoutePoints, serverPrefs] = await Promise.all([
         propertyService.getAll(),
         tripService.getAll(),
         visitService.getAll().catch(() => []),
         routePointService.getAll().catch(() => []),
+        trackingService.getTrackingPreferences().catch(() => null),
       ]);
+
+      if (serverPrefs) {
+        setSafetyPreferences({
+          trackingConfirmation: serverPrefs.trackingConfirmation ?? true,
+          accuracyWarningMeters: serverPrefs.accuracyWarningMeters ?? 50,
+          trackingReminderMinutes: serverPrefs.trackingReminderMinutes ?? 60,
+          privacyReminderAcknowledged: serverPrefs.privacyReminderAcknowledged ?? true,
+        });
+      }
 
       const userPlaces = user?.id
         ? placesData.filter((p) => !p.userId || p.userId === user.id)
@@ -323,11 +415,11 @@ const LiveTrackingPage = () => {
     if (!leafletMapInstance.current || !routePolylineRef.current) return;
     const map = leafletMapInstance.current;
     if (routeBreadcrumbs && routeBreadcrumbs.length > 0) {
-      const latLngs = routeBreadcrumbs.map((pt) => [pt.lat, pt.lng]);
-      routePolylineRef.current.setLatLngs(latLngs);
+      const segments = buildRouteSegments(routeBreadcrumbs);
+      routePolylineRef.current.setLatLngs(segments);
 
       // Render or update green start pin at the first recorded coordinate of the trip
-      const startCoord = latLngs[0];
+      const startCoord = [routeBreadcrumbs[0].lat, routeBreadcrumbs[0].lng];
       if (!liveStartMarkerRef.current) {
         const startIcon = L.divIcon({
           className: 'custom-live-start-marker',
@@ -680,7 +772,7 @@ const LiveTrackingPage = () => {
       // 3. Reverse-geocode the representative coordinate
       let placeName = 'Unknown Location';
       let address = '';
-      let city = 'Bengaluru';
+      let city = 'Hyderabad';
       let category = 'room';
 
       try {
@@ -956,6 +1048,68 @@ const LiveTrackingPage = () => {
     }
   }, []);
 
+  // Phase 5: Nearby Saved Rooms Proximity Detection Engine
+  const processNearbySavedRooms = useCallback(
+    (coords) => {
+      // 1. Only detect when GPS tracking is actively recording
+      if (trackingStatus !== 'recording') return;
+
+      // 2. Only detect if user has enabled nearby notifications
+      if (!nearbyPreferences.enabled) return;
+
+      // 3. User must have saved rooms
+      if (!places || places.length === 0) return;
+
+      const radius = nearbyPreferences.radius || 200;
+      const history = nearbyNotificationHistoryRef.current;
+      const now = Date.now();
+
+      let closestCandidate = null;
+      let minDistance = Infinity;
+
+      // Compare coordinates of authenticated user's saved rooms using Haversine formula
+      places.forEach((room) => {
+        const rLat = Number(room.latitude || room.lat);
+        const rLng = Number(room.longitude || room.lng);
+        if (isNaN(rLat) || isNaN(rLng)) return;
+
+        const dist = calculateDistanceMeters(coords.lat, coords.lng, rLat, rLng);
+
+        // Hysteresis exit check: if previously alerted, mark exited once outside radius + 40m buffer
+        // (40m hysteresis buffer prevents GPS jitter loops)
+        if (history[room.id]?.status === 'notified' && dist > (radius + 40)) {
+          history[room.id] = {
+            status: 'exited',
+            exitedAt: now,
+          };
+        }
+
+        // Inside proximity radius check
+        if (dist <= radius) {
+          const record = history[room.id];
+          // If not yet notified during this continuous encounter
+          if (!record || record.status !== 'notified') {
+            if (dist < minDistance) {
+              minDistance = dist;
+              closestCandidate = { room, distance: Math.round(dist) };
+            }
+          }
+        }
+      });
+
+      // Trigger notification for closest un-notified room
+      if (closestCandidate) {
+        history[closestCandidate.room.id] = {
+          status: 'notified',
+          notifiedAt: now,
+          distance: closestCandidate.distance,
+        };
+        setNearbyRoomAlert(closestCandidate);
+      }
+    },
+    [trackingStatus, nearbyPreferences, places]
+  );
+
   // 6. Coordinate Processing Pipeline with Robust GPS Filtering (Requirement 4)
   const processNewCoordinate = useCallback(
     async (rawCoords) => {
@@ -985,6 +1139,9 @@ const LiveTrackingPage = () => {
         accuracy: rawCoords.accuracy ? Math.round(rawCoords.accuracy) : 6,
       };
 
+      // Telemetry: record raw GPS update for live diagnostics
+      gpsQueue.recordRawGpsUpdate(coords);
+
       // Update current live location display and user marker on map
       setCurrentLocation(coords);
       setGpsAccuracy(coords.accuracy);
@@ -1007,10 +1164,13 @@ const LiveTrackingPage = () => {
         const last = lastRecordedPointRef.current;
         let shouldRecord = false;
         let stepDist = 0;
+        let currentBearing = coords.heading || 0;
 
         if (!last) {
-          // First point of the trip: record immediately
-          shouldRecord = true;
+          // First point of the trip: allow initial fix up to 85m accuracy
+          if (!coords.accuracy || coords.accuracy <= 85) {
+            shouldRecord = true;
+          }
         } else {
           // 2. Duplicate coordinate check (< 0.8 meter displacement)
           const latDiff = Math.abs(last.lat - coords.lat);
@@ -1023,24 +1183,31 @@ const LiveTrackingPage = () => {
             const apparentSpeedMps = stepDist / timeDeltaSec;
 
             // 3. Sudden GPS Jump / Glitch Filter:
-            // Discard unrealistically fast jumps (> 55 m/s or ~200 km/h with distance > 250m)
-            const isSuddenJump = stepDist > 250 && apparentSpeedMps > 55;
+            // Discard unrealistically fast jumps (> 50 m/s or ~180 km/h with distance > 250m)
+            const isSuddenJump = stepDist > 250 && apparentSpeedMps > 50;
 
             // 4. Accuracy Filter:
-            // Inaccurate readings (> 45m accuracy buffer) are not appended to the route path
-            const isPoorAccuracy = coords.accuracy && coords.accuracy > 45;
+            // Inaccurate readings (> 65m accuracy buffer) are not appended to the route path
+            const isPoorAccuracy = coords.accuracy && coords.accuracy > 65;
 
             // 5. Road turns, curves and movement threshold:
-            // Check heading turn or curve (>= 5 degrees difference)
-            const headingDiff =
+            currentBearing = calculateBearing(last.lat, last.lng, coords.lat, coords.lng);
+            let bearingTurn = false;
+            if (lastBearingRef.current !== null) {
+              const bDiff = getAngularDifference(lastBearingRef.current, currentBearing);
+              if (bDiff >= 12) bearingTurn = true;
+            }
+            const headingTurn =
               last.heading !== undefined && last.heading !== null &&
               coords.heading !== undefined && coords.heading !== null
-                ? Math.abs(last.heading - coords.heading)
-                : 0;
-            const isTurnOrCurve = headingDiff >= 5 && headingDiff <= 355;
+                ? getAngularDifference(last.heading, coords.heading) >= 12
+                : false;
+            const isTurnOrCurve = bearingTurn || headingTurn;
 
-            // Require displacement >= 1 meter, or detected turn/curve, or periodic heartbeat after 15 seconds
-            const isMeaningfulMovement = stepDist >= 1.0 || isTurnOrCurve || timeDeltaSec >= 15;
+            // Require displacement >= 1.5m, or detected turn/curve (>= 1.5m), or periodic heartbeat after 12s (>= 1.0m)
+            const isHeartbeat = timeDeltaSec >= 12 && stepDist >= 1.0;
+            const isDisplacement = stepDist >= 1.5;
+            const isMeaningfulMovement = isDisplacement || (isTurnOrCurve && stepDist >= 1.5) || isHeartbeat;
 
             if (!isSuddenJump && !isPoorAccuracy && isMeaningfulMovement) {
               shouldRecord = true;
@@ -1058,14 +1225,20 @@ const LiveTrackingPage = () => {
         if (shouldRecord) {
           sequenceNumberRef.current += 1;
           const nextSeq = sequenceNumberRef.current;
+          lastBearingRef.current = currentBearing;
+          const tripIdToSave = activeTripRef.current?.id || selectedTrip?.id;
 
           const breadcrumb = {
+            tripId: tripIdToSave,
             lat: coords.lat,
             lng: coords.lng,
+            latitude: coords.lat,
+            longitude: coords.lng,
             accuracy: coords.accuracy || 6,
             speed: coords.speed || 0,
-            heading: coords.heading || 0,
+            heading: coords.heading || currentBearing || 0,
             sequenceNumber: nextSeq,
+            segmentIndex: segmentIndexRef.current,
             timestamp: coords.timestamp ? new Date(coords.timestamp).toISOString() : new Date().toISOString(),
             recordedAt: Date.now(),
           };
@@ -1075,9 +1248,10 @@ const LiveTrackingPage = () => {
 
           setRouteBreadcrumbs((prev) => {
             const updated = [...prev, breadcrumb];
-            // Directly update map polyline using chronological GPS points
+            // Directly update map polyline using multi-segment road coordinates
             if (routePolylineRef.current) {
-              routePolylineRef.current.setLatLngs(updated.map((pt) => [pt.lat, pt.lng]));
+              const segments = buildRouteSegments(updated);
+              routePolylineRef.current.setLatLngs(segments);
             }
             return updated;
           });
@@ -1087,26 +1261,9 @@ const LiveTrackingPage = () => {
             leafletMapInstance.current.panTo([coords.lat, coords.lng]);
           }
 
-          // Asynchronously persist route point to Spring Boot backend API
-          const tripIdToSave = activeTripRef.current?.id || selectedTrip?.id;
+          // Persist route point via reliable client-side IndexedDB upload queue
           if (tripIdToSave) {
-            try {
-              routePointService.create({
-                tripId: tripIdToSave,
-                latitude: coords.lat,
-                longitude: coords.lng,
-                accuracy: coords.accuracy || 6,
-                speed: coords.speed || 0,
-                heading: coords.heading || 0,
-                sequenceNumber: nextSeq,
-                timestamp: breadcrumb.timestamp,
-                recordedAt: breadcrumb.timestamp,
-              }).catch((err) => {
-                console.warn('Failed to persist route breadcrumb point to Spring Boot', err);
-              });
-            } catch (err) {
-              console.warn('Failed to dispatch route breadcrumb create', err);
-            }
+            gpsQueue.enqueue(breadcrumb);
           }
         }
       }
@@ -1117,10 +1274,13 @@ const LiveTrackingPage = () => {
       // Phase 6: Repeated Route Detection Pipeline
       processRepeatedRouteDetection(coords);
 
+      // Phase 5: Nearby Saved Rooms Proximity Pipeline
+      processNearbySavedRooms(coords);
+
       // Run proximity evaluation
       evaluateProximity(coords);
     },
-    [trackingStatus, selectedTrip, routeBreadcrumbs.length, updateUserOnMap, evaluateProximity, processStationaryDetection, processRepeatedRouteDetection, syncSessionToStorage]
+    [trackingStatus, selectedTrip, routeBreadcrumbs.length, updateUserOnMap, evaluateProximity, processStationaryDetection, processRepeatedRouteDetection, processNearbySavedRooms, syncSessionToStorage]
   );
 
   // 7. HTML5 Geolocation Watcher Lifecycle (Prevents Multiple Simultaneous Watchers)
@@ -1129,16 +1289,18 @@ const LiveTrackingPage = () => {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    gpsQueue.setTrackingMeta({ activeWatchers: 0 });
   }, []);
 
   const startGeolocationWatcher = useCallback(() => {
-    // Clean up any existing watcher first
+    // Clean up any existing watcher first (strictly guard against duplicate watchers)
     stopGeolocationWatcher();
 
     if (!navigator.geolocation) {
       setGpsPermission('unavailable');
       setGpsErrorMsg('Browser Geolocation API is not supported on this device.');
       showWarning('Geolocation API is not available on this browser.');
+      gpsQueue.setTrackingMeta({ activeWatchers: 0 });
       return;
     }
 
@@ -1173,25 +1335,32 @@ const LiveTrackingPage = () => {
 
     const options = {
       enableHighAccuracy: true,
-      timeout: 12000,
-      maximumAge: 1000,
+      maximumAge: 0,
+      timeout: 15000,
     };
 
-    // First request immediate position
+    // First request immediate position fix
     navigator.geolocation.getCurrentPosition(handleSuccess, handleError, options);
 
     // Then start continuous watcher
     const watchId = navigator.geolocation.watchPosition(handleSuccess, handleError, options);
     watchIdRef.current = watchId;
-  }, [processNewCoordinate, stopGeolocationWatcher, showWarning]);
+    gpsQueue.setTrackingMeta({
+      tripId: activeTripRef.current?.id || selectedTrip?.id,
+      activeWatchers: 1,
+    });
+  }, [processNewCoordinate, stopGeolocationWatcher, showWarning, selectedTrip]);
 
-  // 8. Trip Controls: Start / Pause / Resume / End Trip
-  const handleStartTrip = async () => {
-    // If paused, resume
+  // 8. Trip Controls: Start / Pause / Resume / End Trip (Phase 8 Safe Controls)
+  const handleStartTrip = () => {
+    // If paused, resume existing trip directly without creating a new trip
     if (trackingStatus === 'paused') {
+      segmentIndexRef.current += 1;
+      lastBearingRef.current = null;
       setTrackingStatus('recording');
       syncSessionToStorage({ status: 'recording' });
       startGeolocationWatcher();
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = setInterval(() => {
         setElapsedSeconds((sec) => {
           const nextSec = sec + 1;
@@ -1199,9 +1368,30 @@ const LiveTrackingPage = () => {
           return nextSec;
         });
       }, 1000);
-      showSuccess('Live route tracking resumed!');
+      showSuccess('Live route tracking resumed! Reusing current active trip.');
       return;
     }
+
+    // If confirmation is enabled, prompt user first
+    if (safetyPreferences.trackingConfirmation) {
+      setIsStartConfirmModalOpen(true);
+    } else {
+      executeStartTrip();
+    }
+  };
+
+  const handleDisableFutureStartPrompt = async () => {
+    try {
+      await trackingService.updateTrackingPreferences({ trackingConfirmation: false });
+      setSafetyPreferences((prev) => ({ ...prev, trackingConfirmation: false }));
+    } catch (e) {
+      console.warn('Failed to update tracking confirmation preference', e);
+    }
+  };
+
+  const executeStartTrip = async () => {
+    reminderDismissedIntervalRef.current = null;
+    setTrackingReminderNotice(null);
 
     // Starting new tracking session
     let tripToUse = selectedTrip;
@@ -1229,6 +1419,8 @@ const LiveTrackingPage = () => {
         setRouteBreadcrumbs([]);
         routeBreadcrumbsRef.current = [];
         sequenceNumberRef.current = 0;
+        segmentIndexRef.current = 0;
+        lastBearingRef.current = null;
         lastRecordedPointRef.current = null;
         setDistanceCoveredMeters(0);
         setElapsedSeconds(0);
@@ -1248,6 +1440,8 @@ const LiveTrackingPage = () => {
         setIsStationary(false);
         setStationarySeconds(0);
         setAutoSavedStop(null);
+        nearbyNotificationHistoryRef.current = {};
+        setNearbyRoomAlert(null);
       } catch (err) {
         console.error('Failed to create automatic trip', err);
       }
@@ -1285,7 +1479,7 @@ const LiveTrackingPage = () => {
     showSuccess('Trip tracking started! Geolocation breadcrumbs are now recording.');
   };
 
-  const handlePauseTrip = () => {
+  const handlePauseTrip = async () => {
     setTrackingStatus('paused');
     syncSessionToStorage({ status: 'paused' });
     stopGeolocationWatcher();
@@ -1293,14 +1487,37 @@ const LiveTrackingPage = () => {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
+    const currentTripId = activeTripRef.current?.id || selectedTrip?.id;
+    if (currentTripId) {
+      await gpsQueue.flushPending(currentTripId);
+    }
     showInfo('Trip tracking paused. Your recorded route and time are preserved.');
   };
 
   const handleEndTripPrompt = () => {
-    setIsEndTripModalOpen(true);
+    setIsStopConfirmModalOpen(true);
   };
 
+  // Phase 8: Extended Tracking Duration Reminders Effect
+  useEffect(() => {
+    if (trackingStatus !== 'recording') {
+      if (trackingReminderNotice) setTrackingReminderNotice(null);
+      return;
+    }
+    const reminderInterval = safetyPreferences.trackingReminderMinutes || 0;
+    if (reminderInterval > 0) {
+      const reminderSeconds = reminderInterval * 60;
+      if (elapsedSeconds >= reminderSeconds && reminderDismissedIntervalRef.current !== reminderInterval) {
+        setTrackingReminderNotice({
+          minutes: Math.floor(elapsedSeconds / 60),
+          interval: reminderInterval,
+        });
+      }
+    }
+  }, [elapsedSeconds, trackingStatus, safetyPreferences.trackingReminderMinutes, trackingReminderNotice]);
+
   const handleConfirmEndTrip = async () => {
+    if (finalizingTrip) return;
     setFinalizingTrip(true);
     stopGeolocationWatcher();
     if (timerIntervalRef.current) {
@@ -1309,8 +1526,26 @@ const LiveTrackingPage = () => {
     }
 
     try {
-      const tripId = selectedTrip?.id || String(Date.now());
-      const formattedDist = formatDistance(distanceCoveredMeters);
+      const effectiveTripId = activeTripRef.current?.id || selectedTrip?.id;
+      if (effectiveTripId) {
+        await gpsQueue.flushPending(effectiveTripId);
+      }
+
+      const tripId = effectiveTripId || selectedTrip?.id || String(Date.now());
+      const crumbs = routeBreadcrumbsRef.current;
+      let calculatedDistMeters = 0;
+      for (let i = 1; i < crumbs.length; i++) {
+        if (crumbs[i].segmentIndex === crumbs[i - 1].segmentIndex) {
+          calculatedDistMeters += calculateDistanceMeters(
+            crumbs[i - 1].lat,
+            crumbs[i - 1].lng,
+            crumbs[i].lat,
+            crumbs[i].lng
+          );
+        }
+      }
+      const finalDistMeters = Math.max(distanceCoveredMeters, Math.round(calculatedDistMeters));
+      const formattedDist = formatDistance(finalDistMeters);
       const formattedDur = formatDurationSeconds(elapsedSeconds);
       const now = new Date().toISOString();
 
@@ -1318,9 +1553,7 @@ const LiveTrackingPage = () => {
       localStorage.removeItem('roomtrail_active_tracking_session');
 
       // 1. Update trip status to completed
-      const effectiveTripId = activeTripRef.current?.id || selectedTrip?.id;
       if (effectiveTripId) {
-        const crumbs = routeBreadcrumbsRef.current;
         const firstPt = crumbs[0] || lastRecordedPointRef.current;
         const lastPt = crumbs[crumbs.length - 1] || lastRecordedPointRef.current;
         await tripService.update(effectiveTripId, {
@@ -1344,22 +1577,23 @@ const LiveTrackingPage = () => {
         tripId: tripId,
         userId: user?.id || '1',
         tripTitle: selectedTrip?.tripName || selectedTrip?.title || 'Live Route Tracking',
-        totalDistanceMeters: distanceCoveredMeters,
+        totalDistanceMeters: finalDistMeters,
         totalDistanceFormatted: formattedDist,
         durationSeconds: elapsedSeconds,
         totalDurationFormatted: formattedDur,
         maxSpeedKmh: maxSpeedKmh,
         averageSpeedKmh:
           elapsedSeconds > 0
-            ? Math.round((distanceCoveredMeters / elapsedSeconds) * 3.6)
+            ? Math.round((finalDistMeters / elapsedSeconds) * 3.6)
             : 0,
-        routePointsCount: routeBreadcrumbs.length,
+        routePointsCount: crumbs.length,
         visitedDestinationsCount: places.filter((p) => p.visited).length,
         completedAt: now,
       });
 
       setTrackingStatus('ended');
       setIsEndTripModalOpen(false);
+      setIsStopConfirmModalOpen(false);
       showSuccess('Trip completed and summary successfully saved!');
 
       // Navigate to Trip Summary Page
@@ -1368,6 +1602,7 @@ const LiveTrackingPage = () => {
       console.error('Failed to finalize trip summary', err);
       showError('Failed to save trip summary to backend.');
       setIsEndTripModalOpen(false);
+      setIsStopConfirmModalOpen(false);
     } finally {
       setFinalizingTrip(false);
     }
@@ -1872,6 +2107,87 @@ const LiveTrackingPage = () => {
     });
   }, [processNewCoordinate, showInfo, showSuccess]);
 
+  // Phase 5 Nearby Rooms Simulation: Approach within proximity radius (e.g. ~110m)
+  const handleSimulateApproachNearbyRoom = useCallback((roomOverride = null) => {
+    const targetRoom = roomOverride || places.find((p) => p.latitude && p.longitude);
+    if (!targetRoom) {
+      showWarning('No saved room with coordinates found to test nearby detection.');
+      return;
+    }
+    const tLat = Number(targetRoom.latitude || targetRoom.lat);
+    const tLng = Number(targetRoom.longitude || targetRoom.lng);
+    // Offset by ~0.0008 deg lat (~88m) and ~0.0005 deg lng (~55m) -> total ~105m
+    const approachLat = tLat + 0.0008;
+    const approachLng = tLng + 0.0005;
+
+    showInfo(`[TEST Nearby] Moving within ~110m of saved room: "${targetRoom.name}"...`);
+    processNewCoordinate({
+      lat: approachLat,
+      lng: approachLng,
+      accuracy: 6,
+      speed: 6.5,
+      timestamp: Date.now(),
+    });
+  }, [places, processNewCoordinate, showInfo, showWarning]);
+
+  // Phase 5 Nearby Rooms Simulation: Move outside proximity radius (> radius + 40m, e.g. ~380m)
+  const handleSimulateExitNearbyRoom = useCallback((roomOverride = null) => {
+    const targetRoom = roomOverride || places.find((p) => p.latitude && p.longitude);
+    if (!targetRoom) return;
+    const tLat = Number(targetRoom.latitude || targetRoom.lat);
+    const tLng = Number(targetRoom.longitude || targetRoom.lng);
+    // Offset by ~0.0028 deg lat and ~0.0020 deg lng -> ~380m
+    const exitLat = tLat + 0.0028;
+    const exitLng = tLng + 0.0020;
+
+    showInfo(`[TEST Nearby] Moving outside proximity zone (~380m) of saved room: "${targetRoom.name}"...`);
+    processNewCoordinate({
+      lat: exitLat,
+      lng: exitLng,
+      accuracy: 6,
+      speed: 8.5,
+      timestamp: Date.now(),
+    });
+  }, [places, processNewCoordinate, showInfo]);
+
+  // Phase 5 Nearby Rooms Simulation: Re-enter proximity radius after exiting
+  const handleSimulateReenterNearbyRoom = useCallback((roomOverride = null) => {
+    const targetRoom = roomOverride || places.find((p) => p.latitude && p.longitude);
+    if (!targetRoom) return;
+    const tLat = Number(targetRoom.latitude || targetRoom.lat);
+    const tLng = Number(targetRoom.longitude || targetRoom.lng);
+    const approachLat = tLat + 0.0007;
+    const approachLng = tLng + 0.0004;
+
+    showInfo(`[TEST Nearby] Re-entering proximity zone (~100m) of saved room: "${targetRoom.name}"...`);
+    processNewCoordinate({
+      lat: approachLat,
+      lng: approachLng,
+      accuracy: 6,
+      speed: 7.0,
+      timestamp: Date.now(),
+    });
+  }, [places, processNewCoordinate, showInfo]);
+
+  // Phase 5 Nearby Rooms Simulation: Outside configured radius (e.g. 265m when radius is 200m)
+  const handleSimulateOutsideRadius = useCallback((roomOverride = null) => {
+    const targetRoom = roomOverride || places.find((p) => p.latitude && p.longitude);
+    if (!targetRoom) return;
+    const tLat = Number(targetRoom.latitude || targetRoom.lat);
+    const tLng = Number(targetRoom.longitude || targetRoom.lng);
+    const outsideLat = tLat + 0.0019;
+    const outsideLng = tLng + 0.0016;
+
+    showInfo(`[TEST Nearby] Positioned at ~265m (outside 200m radius) of "${targetRoom.name}". Expecting 0 alerts.`);
+    processNewCoordinate({
+      lat: outsideLat,
+      lng: outsideLng,
+      accuracy: 6,
+      speed: 7.5,
+      timestamp: Date.now(),
+    });
+  }, [places, processNewCoordinate, showInfo]);
+
   // Expose simulation helpers on window for automated testing without UI clutter
   useEffect(() => {
     window.roomtrailSimulate = {
@@ -1889,6 +2205,10 @@ const LiveTrackingPage = () => {
       continueSameRouteNoSpam: handleSimulateContinueRepeatedRoute,
       travelDifferentRoute: handleSimulateTravelDifferentRoute,
       testGpsDriftAndInaccurate: handleSimulateGpsDriftAndInaccurate,
+      approachNearbyRoom: handleSimulateApproachNearbyRoom,
+      exitNearbyRoom: handleSimulateExitNearbyRoom,
+      reenterNearbyRoom: handleSimulateReenterNearbyRoom,
+      outsideRadius: handleSimulateOutsideRadius,
     };
     return () => {
       delete window.roomtrailSimulate;
@@ -1910,6 +2230,10 @@ const LiveTrackingPage = () => {
     handleSimulateContinueRepeatedRoute,
     handleSimulateTravelDifferentRoute,
     handleSimulateGpsDriftAndInaccurate,
+    handleSimulateApproachNearbyRoom,
+    handleSimulateExitNearbyRoom,
+    handleSimulateReenterNearbyRoom,
+    handleSimulateOutsideRadius,
   ]);
 
   // Clean up timer, watcher, and storage on unmount
@@ -1936,32 +2260,32 @@ const LiveTrackingPage = () => {
   const renderTrackingStatusBadge = () => {
     if (trackingStatus === 'recording') {
       return (
-        <span className="badge-rt tracking-badge-recording" title="Actively recording GPS movement">
+        <span className="badge-rt tracking-badge-recording" id="tracking-status-badge" title="Actively recording GPS movement">
           <span className="status-live-dot"></span>
-          Tracking Active
+          Recording
         </span>
       );
     }
     if (trackingStatus === 'paused') {
       return (
-        <span className="badge-rt tracking-badge-paused" title="GPS recording is currently paused">
-          <i className="bi bi-pause-circle-fill text-warning"></i>
-          Tracking Paused
+        <span className="badge-rt tracking-badge-paused" id="tracking-status-badge" title="GPS recording is temporarily paused">
+          <i className="bi bi-pause-circle-fill text-warning me-1"></i>
+          Paused
         </span>
       );
     }
     if (trackingStatus === 'ended') {
       return (
-        <span className="badge-rt tracking-badge-ended" title="Trip recording completed">
-          <i className="bi bi-stop-circle-fill text-secondary"></i>
-          Tracking Stopped
+        <span className="badge-rt tracking-badge-ended" id="tracking-status-badge" title="The current trip has ended">
+          <i className="bi bi-stop-circle-fill text-secondary me-1"></i>
+          Stopped
         </span>
       );
     }
     return (
-      <span className="badge-rt tracking-badge-idle" title="GPS tracking has not started">
-        <i className="bi bi-circle text-muted"></i>
-        Tracking Idle
+      <span className="badge-rt tracking-badge-idle" id="tracking-status-badge" title="Tracking has not started">
+        <i className="bi bi-circle text-muted me-1"></i>
+        Idle
       </span>
     );
   };
@@ -2075,6 +2399,13 @@ const LiveTrackingPage = () => {
                 setElapsedSeconds(0);
                 setDistanceCoveredMeters(0);
                 setRouteBreadcrumbs([]);
+                routeBreadcrumbsRef.current = [];
+                sequenceNumberRef.current = 0;
+                segmentIndexRef.current = 0;
+                lastBearingRef.current = null;
+                lastRecordedPointRef.current = null;
+                nearbyNotificationHistoryRef.current = {};
+                setNearbyRoomAlert(null);
                 if (routePolylineRef.current) routePolylineRef.current.setLatLngs([]);
               }}
             >
@@ -2099,6 +2430,47 @@ const LiveTrackingPage = () => {
             title="Configure Proximity Thresholds"
           >
             <i className="bi bi-gear"></i> Radar Config
+          </button>
+
+          <button
+            type="button"
+            className={`btn btn-sm ${showNearbySettings ? 'btn-primary' : 'btn-outline-primary'} d-flex align-items-center gap-1`}
+            onClick={() => setShowNearbySettings(!showNearbySettings)}
+            id="nearby-settings-toggle-btn"
+            title="Configure Nearby Saved Rooms Alerts"
+          >
+            <i className="bi bi-bell-fill"></i>
+            <span>Nearby Alerts</span>
+            <span className="badge bg-light text-dark ms-1" style={{ fontSize: '10px' }}>
+              {nearbyPreferences.enabled ? `${nearbyPreferences.radius}m` : 'Off'}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+            onClick={() => setIsSafetySettingsOpen(true)}
+            id="live-tracking-safety-settings-btn"
+            title="Configure Tracking Safety & Accuracy Warnings"
+          >
+            <i className="bi bi-shield-check text-primary"></i>
+            <span>Safety Settings</span>
+          </button>
+
+          <button
+            type="button"
+            className={`btn btn-sm ${showDiagnosticsPanel ? 'btn-info text-white' : 'btn-outline-info'} d-flex align-items-center gap-1`}
+            onClick={() => setShowDiagnosticsPanel(!showDiagnosticsPanel)}
+            id="live-tracking-diagnostics-btn"
+            title="Toggle Live Route Diagnostics & Telemetry Panel"
+          >
+            <i className="bi bi-activity"></i>
+            <span>Diagnostics</span>
+            {gpsDiagnostics.pointsPending > 0 && (
+              <span className="badge bg-warning text-dark ms-1" style={{ fontSize: '10px' }}>
+                {gpsDiagnostics.pointsPending}
+              </span>
+            )}
           </button>
 
           {/* Movement & Stop Simulation Controls for Testing */}
@@ -2189,6 +2561,24 @@ const LiveTrackingPage = () => {
             >
               <i className="bi bi-arrow-up-right"></i>
             </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-primary"
+              onClick={() => handleSimulateApproachNearbyRoom()}
+              id="live-tracking-sim-nearby-btn"
+              title="Simulate approaching within 200m of saved room"
+            >
+              <i className="bi bi-bell me-1"></i> Nearby Room
+            </button>
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-secondary"
+              onClick={() => handleSimulateExitNearbyRoom()}
+              id="live-tracking-sim-exit-nearby-btn"
+              title="Simulate exiting proximity radius (>260m)"
+            >
+              <i className="bi bi-box-arrow-right me-1"></i> Exit Nearby
+            </button>
           </div>
         </div>
       </div>
@@ -2231,6 +2621,195 @@ const LiveTrackingPage = () => {
           GPS Status: <strong className="text-uppercase">{gpsPermission}</strong>
         </span>
       </div>
+
+      {/* Phase 8: GPS Accuracy Warning Banner */}
+      {gpsAccuracy && gpsAccuracy > (safetyPreferences.accuracyWarningMeters || 50) && (
+        <div className="alert alert-warning border-0 shadow-xs d-flex align-items-center gap-2 mb-3 py-2 px-3 small" id="gps-accuracy-warning-banner">
+          <i className="bi bi-exclamation-triangle-fill text-warning fs-5 flex-shrink-0"></i>
+          <div>
+            <strong>GPS Accuracy Warning:</strong> Current location accuracy is ±{gpsAccuracy}m, which exceeds your configured safety threshold of ±{safetyPreferences.accuracyWarningMeters || 50}m. Route breadcrumbs and stop detection may have reduced precision until GPS reception improves.
+          </div>
+        </div>
+      )}
+
+      {/* Phase 8: Extended Tracking Duration Reminder Banner */}
+      {trackingReminderNotice && trackingStatus === 'recording' && (
+        <div className="alert alert-info border-0 shadow-xs d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 py-2 px-3 small" id="active-tracking-reminder-banner">
+          <div className="d-flex align-items-center gap-2">
+            <i className="bi bi-alarm-fill text-info fs-5 flex-shrink-0"></i>
+            <div>
+              <strong>Tracking Duration Reminder:</strong> You have been continuously recording GPS route data for {trackingReminderNotice.minutes} minutes. Tracking is still actively recording.
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-secondary py-0 px-2"
+            onClick={() => {
+              reminderDismissedIntervalRef.current = trackingReminderNotice.interval;
+              setTrackingReminderNotice(null);
+            }}
+            id="dismiss-tracking-reminder-btn"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Phase 9: Live Route Diagnostics Telemetry Panel */}
+      {showDiagnosticsPanel && (
+        <div className="rt-card p-3 mb-4 bg-dark text-light border border-secondary shadow-sm" id="live-route-diagnostics-panel">
+          <div className="d-flex justify-content-between align-items-center mb-3 border-bottom border-secondary pb-2">
+            <div className="d-flex align-items-center gap-2">
+              <i className="bi bi-activity text-info fs-5"></i>
+              <h6 className="fw-bold mb-0 text-white">Live Route Diagnostics & Telemetry</h6>
+              <span className="badge bg-secondary text-uppercase" style={{ fontSize: '10px' }}>Dev Diagnostics</span>
+            </div>
+            <button
+              type="button"
+              className="btn-close btn-close-white btn-sm"
+              onClick={() => setShowDiagnosticsPanel(false)}
+              aria-label="Close diagnostics"
+            ></button>
+          </div>
+          <div className="row g-2 text-monospace" style={{ fontSize: '12px' }}>
+            <div className="col-6 col-md-3">
+              <div className="p-2 rounded bg-black bg-opacity-50 border border-secondary border-opacity-25">
+                <div className="text-secondary small">Tracking Status</div>
+                <div
+                  className="fw-bold text-uppercase mt-1"
+                  id="diag-tracking-status"
+                  style={{
+                    color:
+                      trackingStatus === 'recording'
+                        ? '#10b981'
+                        : trackingStatus === 'paused'
+                        ? '#f59e0b'
+                        : '#94a3b8',
+                  }}
+                >
+                  {trackingStatus}
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-md-3">
+              <div className="p-2 rounded bg-black bg-opacity-50 border border-secondary border-opacity-25">
+                <div className="text-secondary small">Active Watchers</div>
+                <div
+                  className="fw-bold mt-1"
+                  id="diag-active-watchers"
+                  style={{
+                    color:
+                      gpsDiagnostics.activeWatchers === 1
+                        ? '#10b981'
+                        : gpsDiagnostics.activeWatchers === 0
+                        ? '#94a3b8'
+                        : '#ef4444',
+                  }}
+                >
+                  {gpsDiagnostics.activeWatchers}{' '}
+                  {gpsDiagnostics.activeWatchers === 1
+                    ? '(Healthy - 1 active)'
+                    : gpsDiagnostics.activeWatchers === 0
+                    ? '(Idle / Paused)'
+                    : '(Duplicate!)'}
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-md-3">
+              <div className="p-2 rounded bg-black bg-opacity-50 border border-secondary border-opacity-25">
+                <div className="text-secondary small">Updates Received (Raw)</div>
+                <div className="fw-bold mt-1 text-info" id="diag-updates-received">
+                  {gpsDiagnostics.updatesReceived}
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-md-3">
+              <div className="p-2 rounded bg-black bg-opacity-50 border border-secondary border-opacity-25">
+                <div className="text-secondary small">Accepted Breadcrumbs</div>
+                <div className="fw-bold mt-1 text-success" id="diag-points-accepted">
+                  {gpsDiagnostics.pointsAccepted} (Seq #{sequenceNumberRef.current})
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-md-3">
+              <div className="p-2 rounded bg-black bg-opacity-50 border border-secondary border-opacity-25">
+                <div className="text-secondary small">Points Saved to DB</div>
+                <div className="fw-bold mt-1 text-primary" id="diag-points-saved">
+                  {gpsDiagnostics.pointsSaved}
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-md-3">
+              <div className="p-2 rounded bg-black bg-opacity-50 border border-secondary border-opacity-25">
+                <div className="text-secondary small">Queue Pending</div>
+                <div
+                  className="fw-bold mt-1"
+                  id="diag-points-pending"
+                  style={{ color: gpsDiagnostics.pointsPending > 0 ? '#f59e0b' : '#10b981' }}
+                >
+                  {gpsDiagnostics.pointsPending}{' '}
+                  {gpsDiagnostics.pointsPending > 0 ? 'Syncing...' : 'Synced'}
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-md-3">
+              <div className="p-2 rounded bg-black bg-opacity-50 border border-secondary border-opacity-25">
+                <div className="text-secondary small">GPS Accuracy</div>
+                <div className="fw-bold mt-1 text-warning" id="diag-last-accuracy">
+                  {gpsAccuracy != null
+                    ? `±${gpsAccuracy}m`
+                    : gpsDiagnostics.lastAccuracy != null
+                    ? `±${gpsDiagnostics.lastAccuracy}m`
+                    : 'N/A'}
+                </div>
+              </div>
+            </div>
+            <div className="col-6 col-md-3">
+              <div className="p-2 rounded bg-black bg-opacity-50 border border-secondary border-opacity-25">
+                <div className="text-secondary small">Segment / Trip ID</div>
+                <div
+                  className="fw-bold mt-1 text-truncate"
+                  id="diag-segment-trip"
+                  title={`Segment ${segmentIndexRef.current} | Trip ${activeTripRef.current?.id || selectedTrip?.id || 'None'}`}
+                >
+                  Seg #{segmentIndexRef.current} | {activeTripRef.current?.id || selectedTrip?.id || 'No active trip'}
+                </div>
+              </div>
+            </div>
+            <div className="col-12">
+              <div className="p-2 rounded bg-black bg-opacity-50 border border-secondary border-opacity-25 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                  <span className="text-secondary me-2">Last Point:</span>
+                  <span className="text-light" id="diag-last-coords">
+                    {currentLocation
+                      ? `${currentLocation.lat?.toFixed(5)}°, ${currentLocation.lng?.toFixed(5)}°`
+                      : 'None recorded yet'}
+                  </span>
+                  <span className="text-secondary ms-3 me-2">Timestamp:</span>
+                  <span className="text-light" id="diag-last-timestamp">
+                    {gpsDiagnostics.lastTimestamp
+                      ? new Date(gpsDiagnostics.lastTimestamp).toLocaleTimeString()
+                      : 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <span className="badge bg-opacity-25 bg-success text-success border border-success border-opacity-25 me-2">
+                    <i className="bi bi-hdd-network me-1"></i>IndexedDB Queue Active
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-outline-info btn-sm py-0 px-2"
+                    style={{ fontSize: '11px' }}
+                    onClick={() => gpsQueue.flush(activeTripRef.current?.id || selectedTrip?.id)}
+                  >
+                    <i className="bi bi-arrow-repeat me-1"></i>Flush Queue Now
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Collapsible Proximity Threshold Config Panel */}
       {showThresholdSettings && (
@@ -2284,6 +2863,179 @@ const LiveTrackingPage = () => {
         </div>
       )}
 
+      {/* Phase 5: Collapsible Nearby Saved Rooms Alert Settings Panel */}
+      {showNearbySettings && (
+        <div className="card shadow-sm border mb-4 bg-white" id="nearby-settings-card">
+          <div className="card-body p-3">
+            <div className="d-flex justify-content-between align-items-center mb-2">
+              <h6 className="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                <i className="bi bi-bell-fill text-primary"></i> Nearby Saved Rooms Alert Settings
+              </h6>
+              <button
+                type="button"
+                className="btn-close btn-sm"
+                onClick={() => setShowNearbySettings(false)}
+                id="nearby-settings-close-btn"
+                aria-label="Close"
+              />
+            </div>
+            <p className="text-muted small mb-3">
+              Get notified during live tracking when you pass near previously saved rooms in the same locality.
+            </p>
+            <div className="row g-3 align-items-center">
+              <div className="col-12 col-md-5">
+                <div className="form-check form-switch">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    role="switch"
+                    id="nearby-notifications-toggle"
+                    checked={nearbyPreferences.enabled}
+                    onChange={(e) => updateNearbyPreferences({ enabled: e.target.checked })}
+                  />
+                  <label className="form-check-label fw-semibold text-dark small" htmlFor="nearby-notifications-toggle">
+                    Enable Nearby Saved Rooms Notifications
+                  </label>
+                </div>
+                <div className="text-muted small ps-4" style={{ fontSize: '11px' }}>
+                  {nearbyPreferences.enabled
+                    ? 'Active: notifications appear when approaching saved rooms'
+                    : 'Disabled: no proximity notifications will be shown'}
+                </div>
+              </div>
+
+              <div className="col-12 col-md-7">
+                <label className="form-label small fw-semibold text-dark mb-1">
+                  Proximity Alert Radius:
+                </label>
+                <div className="btn-group btn-group-sm w-100" role="group" aria-label="Proximity Radius">
+                  {[100, 200, 500].map((radius) => (
+                    <button
+                      key={radius}
+                      type="button"
+                      className={`btn ${
+                        nearbyPreferences.radius === radius && nearbyPreferences.enabled
+                          ? 'btn-primary'
+                          : 'btn-outline-primary'
+                      }`}
+                      disabled={!nearbyPreferences.enabled}
+                      onClick={() => updateNearbyPreferences({ radius })}
+                      id={`nearby-radius-${radius}-btn`}
+                    >
+                      {radius} m {radius === 200 ? '(Default)' : ''}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-muted small mt-1" style={{ fontSize: '11px' }}>
+                  Notifies when within <strong>{nearbyPreferences.radius} metres</strong> of a saved room.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 5: Nearby Saved Room Notification Toast / Card */}
+      {nearbyRoomAlert && (
+        <div
+          id="nearby-saved-room-notification"
+          className="card shadow border-primary mb-3 bg-white animate__animated animate__fadeInDown"
+          style={{
+            borderLeft: '5px solid #0d6efd',
+            backgroundColor: '#f8fafc',
+          }}
+          role="alert"
+        >
+          <div className="card-body p-3">
+            <div className="d-flex align-items-start justify-content-between gap-3">
+              <div className="d-flex align-items-start gap-3">
+                <div
+                  className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center flex-shrink-0 mt-1"
+                  style={{ width: '42px', height: '42px' }}
+                >
+                  <i className="bi bi-bell-fill fs-5"></i>
+                </div>
+                <div>
+                  <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
+                    <span className="badge bg-primary text-white" style={{ fontSize: '11px' }}>
+                      <i className="bi bi-geo-alt-fill me-1"></i> Nearby Saved Room
+                    </span>
+                    {(nearbyRoomAlert.room.isFavorite || nearbyRoomAlert.room.favorite) && (
+                      <span className="badge bg-danger text-white" id="nearby-room-favourite-badge" style={{ fontSize: '11px' }}>
+                        <i className="bi bi-heart-fill me-1"></i> Favourite
+                      </span>
+                    )}
+                    <span className="badge bg-light text-dark border" id="nearby-room-distance-badge" style={{ fontSize: '11px' }}>
+                      <i className="bi bi-radar me-1 text-primary"></i> ~{nearbyRoomAlert.distance}m away
+                    </span>
+                  </div>
+
+                  <h5 className="h6 fw-bold text-dark mb-1" id="nearby-room-title">
+                    You are near a room you saved earlier.
+                  </h5>
+
+                  <div className="fw-semibold text-primary mb-1" id="nearby-room-name">
+                    {nearbyRoomAlert.room.name}
+                  </div>
+
+                  <div className="mb-2" id="nearby-room-address" style={{ fontSize: '0.84rem' }}>
+                    <GoogleMapsLocationLink
+                      place={nearbyRoomAlert.room}
+                      onMissingLocation={() => showError('Location coordinates and address are not available for this room.')}
+                    />
+                  </div>
+
+                  {nearbyRoomAlert.room.rent && (
+                    <div className="small fw-semibold text-success mb-1" id="nearby-room-rent">
+                      <i className="bi bi-tag-fill me-1"></i>
+                      Monthly Rent: {nearbyRoomAlert.room.rent.startsWith('₹') ? nearbyRoomAlert.room.rent : `₹${nearbyRoomAlert.room.rent}`}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn-close"
+                onClick={() => setNearbyRoomAlert(null)}
+                id="nearby-room-dismiss-x-btn"
+                aria-label="Close"
+              />
+            </div>
+
+            <div className="d-flex justify-content-end gap-2 mt-2 pt-2 border-top flex-wrap">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary px-3"
+                onClick={() => setNearbyRoomAlert(null)}
+                id="nearby-room-dismiss-btn"
+              >
+                Dismiss
+              </button>
+              <GoogleMapsLocationLink
+                place={nearbyRoomAlert.room}
+                variant="button"
+                btnSize="sm"
+                onMissingLocation={() => showError('Location coordinates and address are not available for this room.')}
+              >
+                Google Maps
+              </GoogleMapsLocationLink>
+              <button
+                type="button"
+                className="btn btn-sm btn-primary px-3 fw-semibold"
+                onClick={() => {
+                  setSelectedNearbyRoom(nearbyRoomAlert.room);
+                  setIsNearbyRoomDetailsOpen(true);
+                }}
+                id="nearby-room-view-btn"
+              >
+                <i className="bi bi-eye me-1"></i> View Room
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Approaching Radar Alert Banner (Triggers within 200m) */}
       {approachingPlace && (
         <div
@@ -2320,7 +3072,7 @@ const LiveTrackingPage = () => {
         </div>
       )}
 
-      {/* Phase 5: Automatic Stop Detection Notification Banner */}
+      {/* Automatic Stop Detection Notification Banner */}
       {autoSavedStop && (
         <div
           id="live-tracking-auto-save-alert"
@@ -2335,8 +3087,9 @@ const LiveTrackingPage = () => {
               <i className="bi bi-geo-alt-fill fs-5"></i>
             </div>
             <div>
-              <div className="fw-bold text-success-emphasis">
-                Location saved. Add room details?
+              <div className="fw-bold text-success-emphasis d-flex align-items-center gap-2">
+                <span>Location saved. Add personal notes?</span>
+                <span className="badge bg-success text-white small" style={{ fontSize: '0.65rem' }}>Auto-Saved</span>
               </div>
               <div className="small text-muted">
                 {autoSavedStop.isExisting ? 'Detected revisit at' : 'Auto-detected 5-minute stop at'}{' '}
@@ -2344,25 +3097,38 @@ const LiveTrackingPage = () => {
               </div>
             </div>
           </div>
-          <div className="d-flex gap-2">
+          <div className="d-flex gap-2 align-items-center">
+            <button
+              id="live-tracking-add-notes-btn"
+              type="button"
+              className="btn btn-sm btn-success fw-semibold px-3 shadow-sm d-flex align-items-center gap-1"
+              onClick={() => {
+                setNotesModalProperty(autoSavedStop);
+                setIsNotesModalOpen(true);
+              }}
+            >
+              <i className="bi bi-sticky-fill"></i> Add Notes
+            </button>
             <button
               id="live-tracking-add-details-btn"
               type="button"
-              className="btn btn-sm btn-success fw-semibold px-3"
+              className="btn btn-sm btn-outline-success fw-medium px-2"
               onClick={() => {
                 setSelectedAutoProperty(autoSavedStop);
                 setIsRoomDetailsModalOpen(true);
               }}
+              title="Add full room details (rent, contact, amenities)"
             >
-              <i className="bi bi-pencil-square me-1"></i> Add Details
+              <i className="bi bi-pencil-square me-1"></i> More Details
             </button>
             <button
               id="live-tracking-dismiss-auto-save-btn"
               type="button"
               className="btn btn-sm btn-outline-secondary px-2"
               onClick={() => setAutoSavedStop(null)}
+              title="Add notes later from Saved Rooms"
             >
-              Skip
+              Later
             </button>
           </div>
         </div>
@@ -2503,11 +3269,36 @@ const LiveTrackingPage = () => {
         </div>
 
         <div className="col-6 col-md">
-          <div className="live-metric-box">
-            <div className="metric-value text-success">
+          <div className="live-metric-box" id="metric-gps-accuracy-box">
+            <div
+              className={`metric-value ${
+                gpsAccuracy && gpsAccuracy > (safetyPreferences.accuracyWarningMeters || 50)
+                  ? 'text-warning'
+                  : 'text-success'
+              }`}
+            >
               {gpsAccuracy ? `±${gpsAccuracy} m` : '±6 m'}
+              {gpsAccuracy && gpsAccuracy > (safetyPreferences.accuracyWarningMeters || 50) && (
+                <span className="badge bg-warning text-dark ms-1" style={{ fontSize: '9px' }}>
+                  Low
+                </span>
+              )}
             </div>
-            <div className="metric-label">GPS Accuracy</div>
+            <div className="metric-label">
+              GPS Accuracy
+              <span className="text-muted ms-1" style={{ fontSize: '9px' }}>
+                (±{safetyPreferences.accuracyWarningMeters || 50}m)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-6 col-md">
+          <div className="live-metric-box" id="metric-gps-points-box">
+            <div className="metric-value text-primary font-monospace" id="metric-gps-points-count">
+              {routeBreadcrumbs.length}
+            </div>
+            <div className="metric-label">GPS Points Recorded</div>
           </div>
         </div>
       </div>
@@ -3063,6 +3854,168 @@ const LiveTrackingPage = () => {
             setAutoSavedStop({ ...autoSavedStop, ...updatedProp });
           }
         }}
+      />
+
+      {/* Visited Location Notes Modal */}
+      <LocationNotesModal
+        isOpen={isNotesModalOpen}
+        onClose={() => setIsNotesModalOpen(false)}
+        property={notesModalProperty}
+        onNotesSaved={(updatedProp) => {
+          setPlaces((prev) =>
+            prev.map((p) => (p.id === updatedProp.id ? { ...p, ...updatedProp } : p))
+          );
+          if (autoSavedStop && autoSavedStop.id === updatedProp.id) {
+            setAutoSavedStop({ ...autoSavedStop, ...updatedProp });
+          }
+        }}
+      />
+
+      {/* Phase 5: Nearby Saved Room Details Modal */}
+      <Modal
+        isOpen={isNearbyRoomDetailsOpen}
+        onClose={() => setIsNearbyRoomDetailsOpen(false)}
+        title={selectedNearbyRoom?.name || 'Saved Room Details'}
+        size="lg"
+        footer={
+          <div className="d-flex justify-content-between align-items-center w-100">
+            <span className="small text-muted">
+              GPS tracking remains active in background.
+            </span>
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={() => setIsNearbyRoomDetailsOpen(false)}
+              id="nearby-details-close-btn"
+            >
+              Close
+            </button>
+          </div>
+        }
+      >
+        {selectedNearbyRoom && (
+          <div id="nearby-room-details-content">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <span className="badge bg-secondary-subtle text-secondary px-2 py-1 text-capitalize">
+                <i className="bi bi-door-closed me-1"></i>
+                {selectedNearbyRoom.category || 'Room'}
+              </span>
+              <div className="d-flex align-items-center gap-2">
+                {(selectedNearbyRoom.isFavorite || selectedNearbyRoom.favorite) && (
+                  <span className="badge bg-danger text-white" id="nearby-details-fav-badge">
+                    <i className="bi bi-heart-fill me-1"></i> Favourite Room
+                  </span>
+                )}
+                <span className={`badge ${selectedNearbyRoom.visited ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'}`}>
+                  {selectedNearbyRoom.visited ? 'Visited' : 'Pending Visit'}
+                </span>
+              </div>
+            </div>
+
+            <div className="row g-3 mb-3">
+              <div className="col-sm-6">
+                <div className="p-3 rounded bg-light border">
+                  <div className="text-muted small">Monthly Rent / Budget</div>
+                  <div className="fs-5 fw-bold text-dark" id="nearby-details-rent">
+                    {selectedNearbyRoom.rent
+                      ? (selectedNearbyRoom.rent.startsWith('₹') ? selectedNearbyRoom.rent : `₹${selectedNearbyRoom.rent}`)
+                      : 'Not specified'}
+                  </div>
+                </div>
+              </div>
+              <div className="col-sm-6">
+                <div className="p-3 rounded bg-light border">
+                  <div className="text-muted small">Category & Contact</div>
+                  <div className="fs-6 fw-bold text-dark text-capitalize">
+                    {selectedNearbyRoom.category || 'Room'}
+                    {selectedNearbyRoom.contactNumber && (
+                      <span className="text-muted small fw-normal d-block">
+                        <i className="bi bi-telephone me-1"></i>{selectedNearbyRoom.contactNumber}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-3">
+              <div className="d-flex justify-content-between align-items-center mb-1">
+                <label className="fw-bold small text-muted text-uppercase mb-0">Address & Locality</label>
+                <GoogleMapsLocationLink
+                  place={selectedNearbyRoom}
+                  variant="button"
+                  btnSize="sm"
+                  onMissingLocation={() => showError('Location coordinates and address are not available for this room.')}
+                >
+                  Open in Google Maps
+                </GoogleMapsLocationLink>
+              </div>
+              <div className="p-3 rounded bg-light border">
+                <GoogleMapsLocationLink
+                  place={selectedNearbyRoom}
+                  onMissingLocation={() => showError('Location coordinates and address are not available for this room.')}
+                >
+                  <div className="text-dark fw-medium" id="nearby-details-address">{selectedNearbyRoom.address || 'Address not specified'}</div>
+                  {selectedNearbyRoom.city && <div className="text-muted small">{selectedNearbyRoom.city}</div>}
+                </GoogleMapsLocationLink>
+                {selectedNearbyRoom.latitude && selectedNearbyRoom.longitude && (
+                  <div className="small text-primary mt-2 font-monospace d-flex align-items-center justify-content-between flex-wrap gap-2 pt-2 border-top" id="nearby-details-coords">
+                    <span>
+                      <i className="bi bi-geo-alt-fill text-danger me-1"></i>
+                      {Number(selectedNearbyRoom.latitude).toFixed(6)}°, {Number(selectedNearbyRoom.longitude).toFixed(6)}°
+                    </span>
+                    <GoogleMapsLocationLink
+                      place={selectedNearbyRoom}
+                      variant="badge"
+                    >
+                      Navigate in Google Maps
+                    </GoogleMapsLocationLink>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {selectedNearbyRoom.notes && (
+              <div className="p-3 rounded border border-warning-subtle mb-3" style={{ backgroundColor: '#fffbeb' }} id="nearby-details-notes">
+                <div className="d-flex align-items-center gap-1 text-warning-emphasis small fw-bold mb-1">
+                  <i className="bi bi-journal-text fs-6"></i>
+                  <span>Personal Notes</span>
+                </div>
+                <p className="mb-0 text-dark small" style={{ whiteSpace: 'pre-line' }}>
+                  {selectedNearbyRoom.notes}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Phase 8: Safe Start Tracking Confirmation Modal */}
+      <StartTrackingConfirmModal
+        isOpen={isStartConfirmModalOpen}
+        onClose={() => setIsStartConfirmModalOpen(false)}
+        onConfirm={executeStartTrip}
+        onDisableFuturePrompt={handleDisableFutureStartPrompt}
+      />
+
+      {/* Phase 8: Safe Stop Tracking Confirmation Modal */}
+      <StopTrackingConfirmModal
+        isOpen={isStopConfirmModalOpen}
+        onClose={() => setIsStopConfirmModalOpen(false)}
+        onConfirm={handleConfirmEndTrip}
+        isSubmitting={finalizingTrip}
+        elapsedDuration={formatDurationSeconds(elapsedSeconds)}
+        distanceCovered={formatDistance(distanceCoveredMeters)}
+        pointsCount={routeBreadcrumbs.length}
+        stopsCount={places.filter((p) => p.visited).length}
+      />
+
+      {/* Phase 8: Tracking Safety Settings Modal */}
+      <TrackingSafetySettingsModal
+        isOpen={isSafetySettingsOpen}
+        onClose={() => setIsSafetySettingsOpen(false)}
+        currentPreferences={safetyPreferences}
+        onPreferencesUpdated={(updated) => setSafetyPreferences(updated)}
       />
     </div>
   );

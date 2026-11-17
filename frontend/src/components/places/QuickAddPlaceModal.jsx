@@ -43,7 +43,7 @@ const QuickAddPlaceModal = ({
     category: 'flat',
     customCategory: '',
     address: '',
-    city: user?.city || 'Bengaluru, India',
+    city: user?.city || 'Hyderabad, India',
     latitude: '',
     longitude: '',
     priority: 'medium',
@@ -79,7 +79,7 @@ const QuickAddPlaceModal = ({
         category: 'flat',
         customCategory: '',
         address: '',
-        city: user?.city || 'Bengaluru, India',
+        city: user?.city || 'Hyderabad, India',
         latitude: defaultLat !== '' ? String(defaultLat) : '',
         longitude: defaultLng !== '' ? String(defaultLng) : '',
         priority: 'medium',
@@ -229,8 +229,8 @@ const QuickAddPlaceModal = ({
   useEffect(() => {
     if (!showMiniMap || !miniMapContainer.current) return;
 
-    const lat = formData.latitude ? parseFloat(formData.latitude) : (user?.homeCoordinates?.lat || 12.9716);
-    const lng = formData.longitude ? parseFloat(formData.longitude) : (user?.homeCoordinates?.lng || 77.5946);
+    const lat = formData.latitude ? parseFloat(formData.latitude) : (user?.homeCoordinates?.lat || 17.4938);
+    const lng = formData.longitude ? parseFloat(formData.longitude) : (user?.homeCoordinates?.lng || 78.3968);
 
     if (!miniMapInstance.current) {
       const map = L.map(miniMapContainer.current, {
@@ -336,7 +336,7 @@ const QuickAddPlaceModal = ({
         name: formData.name.trim(),
         category: effectiveCategory,
         address: formData.address.trim(),
-        city: formData.city.trim() || 'Bengaluru, India',
+        city: formData.city.trim() || 'Hyderabad, India',
         latitude: formData.latitude !== '' ? parseFloat(formData.latitude) : null,
         longitude: formData.longitude !== '' ? parseFloat(formData.longitude) : null,
         rent: formData.rent.trim(),
@@ -563,7 +563,7 @@ const QuickAddPlaceModal = ({
               type="text"
               name="address"
               className={`form-control ${errors.address ? 'is-invalid' : ''}`}
-              placeholder="e.g. #42, 12th Main Road, HAL 2nd Stage, Indiranagar"
+              placeholder="e.g. Road No. 1, Phase 1, KPHB Colony, Kukatpally"
               value={formData.address}
               onChange={handleChange}
               required
@@ -578,7 +578,7 @@ const QuickAddPlaceModal = ({
               type="text"
               name="city"
               className="form-control"
-              placeholder="e.g. Bengaluru, India"
+              placeholder="e.g. Hyderabad, India"
               value={formData.city}
               onChange={handleChange}
             />
@@ -607,7 +607,7 @@ const QuickAddPlaceModal = ({
                   step="any"
                   name="latitude"
                   className={`form-control form-control-sm ${errors.coordinates ? 'is-invalid' : ''}`}
-                  placeholder="Latitude (e.g. 12.9716)"
+                  placeholder="Latitude (e.g. 17.4938)"
                   value={formData.latitude}
                   onChange={handleChange}
                 />
@@ -618,7 +618,7 @@ const QuickAddPlaceModal = ({
                   step="any"
                   name="longitude"
                   className={`form-control form-control-sm ${errors.coordinates ? 'is-invalid' : ''}`}
-                  placeholder="Longitude (e.g. 77.5946)"
+                  placeholder="Longitude (e.g. 78.3968)"
                   value={formData.longitude}
                   onChange={handleChange}
                 />

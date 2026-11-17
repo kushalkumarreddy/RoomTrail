@@ -6,6 +6,8 @@ import { useNotification } from '../../hooks/useNotification';
 import { propertyService, routingService } from '../../services';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import QuickAddPlaceModal from '../../components/places/QuickAddPlaceModal';
+import GoogleMapsLocationLink from '../../components/common/GoogleMapsLocationLink';
+import { getGoogleMapsUrl } from '../../utils/googleMaps';
 import { getCategoryIcon, formatDistance } from '../../utils/formatters';
 import { isValidCoordinate } from '../../utils/validators';
 
@@ -58,10 +60,10 @@ const MapExplorerPage = () => {
     };
   }, []);
 
-  // Base fallback coordinates (Home base or Bengaluru center)
+  // Base fallback coordinates (Home base or Hyderabad center)
   const homeCoords = {
-    lat: user?.homeCoordinates?.lat || 12.9716,
-    lng: user?.homeCoordinates?.lng || 77.5946,
+    lat: user?.homeCoordinates?.lat || 17.4938,
+    lng: user?.homeCoordinates?.lng || 78.3968,
   };
 
   // Load places from backend
@@ -386,12 +388,22 @@ const MapExplorerPage = () => {
               ? `<div style="font-size: 13px; font-weight: 700; color: #0b192c; margin-bottom: 8px;">${place.rent || place.price}</div>`
               : ''
           }
-          <div style="display: flex; gap: 4px;">
+          <div style="display: flex; gap: 4px; flex-wrap: wrap;">
             <button id="btn-route-${place.id}" style="
               background-color: #ea580c; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; flex: 1;
             ">
               <i class="bi bi-cursor"></i> Route Here
             </button>
+            ${(() => {
+              const gmapsUrl = getGoogleMapsUrl(place);
+              return gmapsUrl ? `
+                <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" style="
+                  background-color: #f1f5f9; color: #dc2626; border: 1px solid #cbd5e1; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+                ">
+                  <i class="bi bi-geo-alt-fill"></i> Google Maps
+                </a>
+              ` : '';
+            })()}
           </div>
         </div>
       `;
@@ -685,7 +697,9 @@ const MapExplorerPage = () => {
                 </div>
 
                 <h6 className="fw-bold text-dark mb-1">{selectedPlace.name}</h6>
-                <p className="text-muted small mb-2 text-truncate">{selectedPlace.address}</p>
+                <div className="mb-2 text-truncate" style={{ fontSize: '0.84rem' }}>
+                  <GoogleMapsLocationLink place={selectedPlace} />
+                </div>
 
                 {/* Coordinates Display (Feature 7) */}
                 <div className="p-2 rounded bg-white border mb-2 small">
@@ -728,6 +742,13 @@ const MapExplorerPage = () => {
                       <i className={`bi ${selectedPlace.visited ? 'bi-arrow-counterclockwise' : 'bi-check-lg'} me-1`}></i>
                       {selectedPlace.visited ? 'Mark Pending' : 'Mark Visited'}
                     </button>
+                    <GoogleMapsLocationLink
+                      place={selectedPlace}
+                      variant="button"
+                      btnSize="sm"
+                    >
+                      Maps
+                    </GoogleMapsLocationLink>
                     <Link
                       to={`/places/edit/${selectedPlace.id}`}
                       className="btn btn-sm btn-outline-secondary px-2"
@@ -791,7 +812,7 @@ const MapExplorerPage = () => {
 
                         <div className="fw-bold text-dark small text-truncate">{place.name}</div>
                         <div className="text-muted text-truncate" style={{ fontSize: '0.75rem' }}>
-                          {place.address || 'Address on record'}
+                          <GoogleMapsLocationLink place={place} />
                         </div>
 
                         <div className="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">

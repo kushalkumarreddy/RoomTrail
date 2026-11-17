@@ -29,6 +29,7 @@ public class AdminController {
     private final RoutePointRepository routePointRepository;
     private final TripSummaryRepository tripSummaryRepository;
     private final AdminAuditLogRepository auditLogRepository;
+    private final UserFavoriteRepository userFavoriteRepository;
 
     public AdminController(UserRepository userRepository,
                            PropertyRepository propertyRepository,
@@ -36,7 +37,8 @@ public class AdminController {
                            VisitRepository visitRepository,
                            RoutePointRepository routePointRepository,
                            TripSummaryRepository tripSummaryRepository,
-                           AdminAuditLogRepository auditLogRepository) {
+                           AdminAuditLogRepository auditLogRepository,
+                           UserFavoriteRepository userFavoriteRepository) {
         this.userRepository = userRepository;
         this.propertyRepository = propertyRepository;
         this.tripRepository = tripRepository;
@@ -44,6 +46,7 @@ public class AdminController {
         this.routePointRepository = routePointRepository;
         this.tripSummaryRepository = tripSummaryRepository;
         this.auditLogRepository = auditLogRepository;
+        this.userFavoriteRepository = userFavoriteRepository;
     }
 
     /**
@@ -237,6 +240,7 @@ public class AdminController {
         tripSummaryRepository.deleteByUserId(id);
         visitRepository.deleteByUserId(id);
         tripRepository.deleteByUserId(id);
+        userFavoriteRepository.deleteByUserId(id);
         propertyRepository.deleteByUserId(id);
         userRepository.delete(targetUser);
 

@@ -20,7 +20,7 @@ public class RegisterRequest {
 
     private String fullName;
     private String phone;
-    private String city = "Bengaluru, India";
+    private String city = "Hyderabad, Telangana";
     private String travelMode = "car";
 
     public RegisterRequest() {}

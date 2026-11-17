@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { propertyService, tripSummaryService } from '../../services';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
+import GoogleMapsLocationLink from '../../components/common/GoogleMapsLocationLink';
 import QuickAddPlaceModal from '../../components/places/QuickAddPlaceModal';
 import { formatDate, getCategoryIcon } from '../../utils/formatters';
 
@@ -278,7 +279,9 @@ const DashboardPage = () => {
                         <div>
                           <div className="fw-semibold text-dark small">{room.name}</div>
                           <div className="text-muted" style={{ fontSize: '0.76rem' }}>
-                            {room.address || 'Address recorded'}
+                            <GoogleMapsLocationLink place={room}>
+                              {room.address || 'Address recorded'}
+                            </GoogleMapsLocationLink>
                           </div>
                           {room.rent && (
                             <span className="badge bg-light text-dark border small mt-1">

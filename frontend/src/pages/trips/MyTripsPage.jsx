@@ -24,8 +24,8 @@ const MyTripsPage = () => {
   const [newTripData, setNewTripData] = useState({
     title: '',
     tripName: '',
-    startLocation: user?.city || 'Bengaluru Base',
-    endLocation: 'Indiranagar Central',
+    startLocation: user?.city || 'Hyderabad Base',
+    endLocation: 'Cyber Towers, Hitech City',
     description: '',
     travelMode: user?.travelMode || 'car',
     scheduledDate: new Date().toISOString().split('T')[0],
@@ -105,16 +105,16 @@ const MyTripsPage = () => {
         title: tripTitle,
         description: newTripData.description.trim(),
         startLocation: newTripData.startLocation.trim() || 'Home Base',
-        startCoordinates: user?.homeCoordinates || { lat: 12.9716, lng: 77.5946 },
+        startCoordinates: user?.homeCoordinates || { lat: 17.4938, lng: 78.3968 },
         endLocation:
           newTripData.endLocation.trim() ||
           (chosenPlaces[chosenPlaces.length - 1]?.name || 'Final Stop'),
         endCoordinates: chosenPlaces[chosenPlaces.length - 1]
           ? {
-              lat: chosenPlaces[chosenPlaces.length - 1].latitude || 12.9784,
-              lng: chosenPlaces[chosenPlaces.length - 1].longitude || 77.6408,
+              lat: chosenPlaces[chosenPlaces.length - 1].latitude || 17.4504,
+              lng: chosenPlaces[chosenPlaces.length - 1].longitude || 78.3811,
             }
-          : { lat: 12.9784, lng: 77.6408 },
+          : { lat: 17.4504, lng: 78.3811 },
         startTime: newTripData.startTime || newTripData.scheduledDate,
         scheduledDate: newTripData.scheduledDate,
         endTime: null,
@@ -140,8 +140,8 @@ const MyTripsPage = () => {
       setNewTripData({
         title: '',
         tripName: '',
-        startLocation: user?.city || 'Bengaluru Base',
-        endLocation: 'Indiranagar Central',
+        startLocation: user?.city || 'Hyderabad Base',
+        endLocation: 'Cyber Towers, Hitech City',
         description: '',
         travelMode: user?.travelMode || 'car',
         scheduledDate: new Date().toISOString().split('T')[0],
@@ -284,8 +284,8 @@ const MyTripsPage = () => {
     setOptimizationResult(null);
 
     const startLoc = {
-      lat: activeOptimizingTrip?.startCoordinates?.lat || user?.homeCoordinates?.lat || 12.9716,
-      lng: activeOptimizingTrip?.startCoordinates?.lng || user?.homeCoordinates?.lng || 77.5946,
+      lat: activeOptimizingTrip?.startCoordinates?.lat || user?.homeCoordinates?.lat || 17.4938,
+      lng: activeOptimizingTrip?.startCoordinates?.lng || user?.homeCoordinates?.lng || 78.3968,
       name: activeOptimizingTrip?.startLocation || 'Home Base',
     };
 
@@ -891,7 +891,7 @@ const MyTripsPage = () => {
               <input
                 type="text"
                 className="form-control"
-                placeholder="e.g. Indiranagar Weekend Flat Tour"
+                placeholder="e.g. Kukatpally & Madhapur Flat Tour"
                 value={newTripData.title}
                 onChange={(e) => setNewTripData({ ...newTripData, title: e.target.value })}
                 required
@@ -917,7 +917,7 @@ const MyTripsPage = () => {
               <input
                 type="text"
                 className="form-control"
-                placeholder="e.g. Home Base (Indiranagar)"
+                placeholder="e.g. Home Base (KPHB Colony)"
                 value={newTripData.startLocation}
                 onChange={(e) => setNewTripData({ ...newTripData, startLocation: e.target.value })}
               />
@@ -928,7 +928,7 @@ const MyTripsPage = () => {
               <input
                 type="text"
                 className="form-control"
-                placeholder="e.g. Indiranagar Metro Station"
+                placeholder="e.g. Cyber Towers, Hitech City"
                 value={newTripData.endLocation}
                 onChange={(e) => setNewTripData({ ...newTripData, endLocation: e.target.value })}
               />

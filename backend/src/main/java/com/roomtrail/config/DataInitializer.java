@@ -29,6 +29,7 @@ public class DataInitializer implements CommandLineRunner {
     private final TripSummaryRepository tripSummaryRepository;
     private final PasswordEncoder passwordEncoder;
     private final ObjectMapper objectMapper;
+    private final org.springframework.core.env.Environment environment;
 
     public DataInitializer(UserRepository userRepository,
                            PropertyRepository propertyRepository,
@@ -37,7 +38,8 @@ public class DataInitializer implements CommandLineRunner {
                            RoutePointRepository routePointRepository,
                            TripSummaryRepository tripSummaryRepository,
                            PasswordEncoder passwordEncoder,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           org.springframework.core.env.Environment environment) {
         this.userRepository = userRepository;
         this.propertyRepository = propertyRepository;
         this.tripRepository = tripRepository;
@@ -46,11 +48,20 @@ public class DataInitializer implements CommandLineRunner {
         this.tripSummaryRepository = tripSummaryRepository;
         this.passwordEncoder = passwordEncoder;
         this.objectMapper = objectMapper;
+        this.environment = environment;
     }
 
     @Override
     @Transactional
     public void run(String... args) {
+        boolean isProd = java.util.Arrays.stream(environment.getActiveProfiles())
+                .anyMatch(p -> p.equalsIgnoreCase("prod") || p.equalsIgnoreCase("production"));
+
+        if (isProd) {
+            log.info("Active profile: [prod]. Automatic database demo data seeding and migration is SKIPPED in production.");
+            return;
+        }
+
         log.info("Starting RoomTrail Data Migration and Seeding...");
 
         try {
@@ -65,9 +76,9 @@ public class DataInitializer implements CommandLineRunner {
                 adminUser.setRole("ROLE_ADMIN");
                 adminUser.setBio("System Administrator for RoomTrail platform");
                 adminUser.setTravelMode("car");
-                adminUser.setCity("Bengaluru, India");
-                adminUser.setHomeLat(12.9716);
-                adminUser.setHomeLng(77.5946);
+                adminUser.setCity("Hyderabad, India");
+                adminUser.setHomeLat(17.3850);
+                adminUser.setHomeLng(78.4867);
                 adminUser.setNotificationRadiusMeters(200);
                 adminUser.setThemePreference("light");
                 userRepository.save(adminUser);
@@ -101,11 +112,11 @@ public class DataInitializer implements CommandLineRunner {
                 defaultUser.setFullName("Alex Morgan");
                 defaultUser.setPhone("+91 98765 43210");
                 defaultUser.setRole("ROLE_USER");
-                defaultUser.setBio("Hunting for rental 2BHK flats in Indiranagar and tracking daily routes.");
+                defaultUser.setBio("Hunting for rental 2BHK flats in KPHB Colony & Hitech City, and tracking daily routes.");
                 defaultUser.setTravelMode("car");
-                defaultUser.setCity("Bengaluru, India");
-                defaultUser.setHomeLat(12.9716);
-                defaultUser.setHomeLng(77.5946);
+                defaultUser.setCity("Hyderabad, India");
+                defaultUser.setHomeLat(17.4938);
+                defaultUser.setHomeLng(78.3968);
                 defaultUser.setNotificationRadiusMeters(200);
                 defaultUser.setThemePreference("light");
                 userRepository.save(defaultUser);
@@ -129,7 +140,7 @@ public class DataInitializer implements CommandLineRunner {
                         p.setName(pNode.has("name") ? pNode.get("name").asText() : "Unnamed Destination");
                         p.setCategory(pNode.has("category") ? pNode.get("category").asText() : "flat");
                         p.setAddress(pNode.has("address") ? pNode.get("address").asText() : "");
-                        p.setCity(pNode.has("city") ? pNode.get("city").asText() : "Bengaluru");
+                        p.setCity(pNode.has("city") ? pNode.get("city").asText() : "Hyderabad");
                         p.setLatitude(pNode.has("latitude") ? pNode.get("latitude").asDouble() : null);
                         p.setLongitude(pNode.has("longitude") ? pNode.get("longitude").asDouble() : null);
                         p.setDescription(pNode.has("description") ? pNode.get("description").asText() : "");
@@ -233,8 +244,8 @@ public class DataInitializer implements CommandLineRunner {
                         RoutePoint pt = new RoutePoint();
                         pt.setId(ptNode.has("id") ? ptNode.get("id").asText() : String.valueOf(System.currentTimeMillis()));
                         pt.setTripId(ptNode.has("tripId") ? ptNode.get("tripId").asText() : "BEo8OVDzY50");
-                        pt.setLatitude(ptNode.has("latitude") ? ptNode.get("latitude").asDouble() : 12.9716);
-                        pt.setLongitude(ptNode.has("longitude") ? ptNode.get("longitude").asDouble() : 77.5946);
+                        pt.setLatitude(ptNode.has("latitude") ? ptNode.get("latitude").asDouble() : 17.4938);
+                        pt.setLongitude(ptNode.has("longitude") ? ptNode.get("longitude").asDouble() : 78.3968);
                         pt.setAccuracy(ptNode.has("accuracy") ? ptNode.get("accuracy").asInt() : 6);
                         pt.setSpeed(ptNode.has("speed") ? ptNode.get("speed").asDouble() : 0.0);
                         pt.setTimestamp(ptNode.has("timestamp") ? ptNode.get("timestamp").asText() : null);

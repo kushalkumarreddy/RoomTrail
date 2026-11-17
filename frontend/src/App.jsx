@@ -123,6 +123,7 @@ function App() {
               {/* 3. Saved Rooms */}
               <Route path="/rooms" element={<SavedPlacesPage />} />
               <Route path="/places" element={<Navigate to="/rooms" replace />} />
+              <Route path="/saved-places" element={<Navigate to="/rooms" replace />} />
               <Route path="/destinations" element={<Navigate to="/rooms" replace />} />
               <Route path="/rooms/new" element={<AddEditPlacePage />} />
               <Route path="/places/new" element={<AddEditPlacePage />} />

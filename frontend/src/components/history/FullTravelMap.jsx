@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { tripService, propertyService, visitService } from '../../services';
 import LoadingSpinner from '../common/LoadingSpinner';
 import EmptyState from '../common/EmptyState';
-import { formatDate, calculateDistanceMeters } from '../../utils/formatters';
+import { formatDate, calculateDistanceMeters, hasSufficientGpsRoute, buildRouteSegments } from '../../utils/formatters';
 
 // 10 Distinct, accessible colors for differentiating historical trips
 const TRIP_PALETTE = [
@@ -188,16 +188,15 @@ const FullTravelMap = ({ initialTripId = 'all', onBackToList = null }) => {
         Number(pt.longitude || pt.lng),
       ]);
 
-      const isTwoPointEndpointsOnly =
-        latLngs.length === 2 &&
-        calculateDistanceMeters(latLngs[0][0], latLngs[0][1], latLngs[1][0], latLngs[1][1]) > 200;
+      const hasRoute = hasSufficientGpsRoute(sortedPts);
 
       if (latLngs.length > 0) {
         latLngs.forEach((coord) => allBounds.push(coord));
 
-        // Draw Actual Travelled Path (Polyline) - skip fake straight lines for older endpoint-only trips
-        if (latLngs.length >= 2 && !isTwoPointEndpointsOnly) {
-          const polyline = L.polyline(latLngs, {
+        // Draw Actual Travelled Path (Polyline) - skip fake straight lines for older trips without detailed GPS breadcrumbs
+        if (hasRoute) {
+          const segments = buildRouteSegments(sortedPts);
+          const polyline = L.polyline(segments, {
             color: color.stroke,
             weight: 5,
             opacity: 0.85,
@@ -292,6 +291,39 @@ const FullTravelMap = ({ initialTripId = 'all', onBackToList = null }) => {
               <span class="text-muted" style="font-size: 10px;">${endCoord[0].toFixed(5)}°, ${endCoord[1].toFixed(5)}°</span>
             </div>
           `);
+        }
+      } else {
+        if (trip.startLat && trip.startLng) {
+          const sCoord = [Number(trip.startLat), Number(trip.startLng)];
+          allBounds.push(sCoord);
+          const startIcon = L.divIcon({
+            className: `custom-trip-start-${trip.tripId}`,
+            html: `
+              <div style="background-color: ${color.stroke}; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.35); color: #ffffff;">
+                <i class="bi bi-geo-alt-fill" style="font-size: 15px;"></i>
+              </div>
+            `,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          });
+          L.marker(sCoord, { icon: startIcon, zIndexOffset: 900 }).addTo(markersGroup)
+            .bindPopup(`<strong>${trip.tripName || trip.title}</strong><br/>Start: ${trip.startLocation || ''}`);
+        }
+        if (trip.endLat && trip.endLng) {
+          const eCoord = [Number(trip.endLat), Number(trip.endLng)];
+          allBounds.push(eCoord);
+          const endIcon = L.divIcon({
+            className: `custom-trip-end-${trip.tripId}`,
+            html: `
+              <div style="background-color: #ef4444; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.35); color: #ffffff;">
+                <i class="bi bi-flag-fill" style="font-size: 14px;"></i>
+              </div>
+            `,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          });
+          L.marker(eCoord, { icon: endIcon, zIndexOffset: 900 }).addTo(markersGroup)
+            .bindPopup(`<strong>${trip.tripName || trip.title}</strong><br/>Destination: ${trip.endLocation || ''}`);
         }
       }
     });
@@ -659,6 +691,12 @@ const FullTravelMap = ({ initialTripId = 'all', onBackToList = null }) => {
                       <i className="bi bi-door-open text-primary me-1"></i> Saved / Visited Locations:{' '}
                       <strong className="text-dark">{activeTripDetails.savedLocationsCount || 0} rooms</strong>
                     </div>
+                    {!hasSufficientGpsRoute(activeTripDetails.routePoints) && (
+                      <div className="alert alert-info py-2 px-2 mt-2 mb-0 small text-dark" style={{ fontSize: '11px' }}>
+                        <i className="bi bi-info-circle-fill me-1 text-primary"></i>
+                        Detailed GPS route was not recorded for this trip.
+                      </div>
+                    )}
                   </div>
                 </div>
 

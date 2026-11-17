@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../hooks/useNotification';
+import { tripService, trackingService } from '../../services';
 import { isValidEmail, isValidPhone, isValidCoordinate } from '../../utils/validators';
 import { formatDate } from '../../utils/formatters';
+import DeleteTripConfirmModal from '../../components/history/DeleteTripConfirmModal';
+import ExportTravelHistoryModal from '../../components/history/ExportTravelHistoryModal';
 
 const ProfilePage = () => {
   const { user, updateProfile, changePassword } = useAuth();
@@ -39,6 +43,92 @@ const ProfilePage = () => {
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingTravel, setSavingTravel] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+
+  // Phase 8: Tracking Safety & Location Privacy State
+  const [safetyPreferences, setSafetyPreferences] = useState({
+    trackingConfirmation: true,
+    accuracyWarningMeters: 50,
+    trackingReminderMinutes: 60,
+    privacyReminderAcknowledged: true,
+  });
+  const [savingSafety, setSavingSafety] = useState(false);
+  const [userTrips, setUserTrips] = useState([]);
+  const [loadingTrips, setLoadingTrips] = useState(false);
+  const [tripToDelete, setTripToDelete] = useState(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingTrip, setIsDeletingTrip] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  // Load Safety Preferences & User Trips
+  const loadSafetyAndTrips = async () => {
+    try {
+      const prefs = await trackingService.getTrackingPreferences();
+      if (prefs) {
+        setSafetyPreferences({
+          trackingConfirmation: prefs.trackingConfirmation ?? true,
+          accuracyWarningMeters: prefs.accuracyWarningMeters ?? 50,
+          trackingReminderMinutes: prefs.trackingReminderMinutes ?? 60,
+          privacyReminderAcknowledged: prefs.privacyReminderAcknowledged ?? true,
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to fetch tracking preferences', e);
+    }
+
+    setLoadingTrips(true);
+    try {
+      const allTrips = await tripService.getAll();
+      const scoped = user?.id ? allTrips.filter((t) => !t.userId || String(t.userId) === String(user.id)) : allTrips;
+      setUserTrips(scoped);
+    } catch (e) {
+      console.warn('Failed to fetch user trips', e);
+    } finally {
+      setLoadingTrips(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadSafetyAndTrips();
+    }
+  }, [user]);
+
+  const handleSaveSafetyPreferences = async (e) => {
+    if (e) e.preventDefault();
+    setSavingSafety(true);
+    try {
+      const updated = await trackingService.updateTrackingPreferences(safetyPreferences);
+      setSafetyPreferences(updated);
+      showSuccess('Tracking safety settings updated successfully!');
+    } catch (err) {
+      console.error('Failed to update tracking preferences', err);
+      showError(err.response?.data?.message || 'Failed to update safety preferences.');
+    } finally {
+      setSavingSafety(false);
+    }
+  };
+
+  const handleDeleteTripPrompt = (trip) => {
+    setTripToDelete(trip);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDeleteTrip = async () => {
+    if (!tripToDelete) return;
+    setIsDeletingTrip(true);
+    try {
+      await tripService.delete(tripToDelete.id);
+      showSuccess(`Trip "${tripToDelete.tripName || tripToDelete.title || 'Journey'}" and its location data have been deleted.`);
+      setIsDeleteModalOpen(false);
+      setTripToDelete(null);
+      await loadSafetyAndTrips();
+    } catch (err) {
+      console.error('Failed to delete trip', err);
+      showError(err.response?.data?.message || 'Failed to delete trip.');
+    } finally {
+      setIsDeletingTrip(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -264,6 +354,17 @@ const ProfilePage = () => {
             >
               <i className="bi bi-shield-lock"></i>
               Security & Password
+            </button>
+            <button
+              type="button"
+              className={`btn w-100 text-start py-2 px-3 mt-1 d-flex align-items-center gap-2 ${
+                activeTab === 'privacy' ? 'btn-rt-primary' : 'btn-rt-ghost'
+              }`}
+              onClick={() => setActiveTab('privacy')}
+              id="profile-tab-privacy-btn"
+            >
+              <i className="bi bi-shield-shaded"></i>
+              Location Privacy & Safety
             </button>
           </div>
         </div>
@@ -615,8 +716,290 @@ const ProfilePage = () => {
               </div>
             </div>
           )}
+
+          {/* TAB 4: Location Data Privacy Controls (Phase 8) */}
+          {activeTab === 'privacy' && (
+            <div className="space-y-4" id="privacy-safety-panel">
+              {/* Privacy Notice Banner */}
+              <div className="alert alert-info border-0 shadow-xs p-3 d-flex align-items-start gap-3 mb-4">
+                <div
+                  className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center flex-shrink-0 mt-1"
+                  style={{ width: '40px', height: '40px' }}
+                >
+                  <i className="bi bi-shield-lock-fill fs-5"></i>
+                </div>
+                <div>
+                  <h6 className="fw-bold text-dark mb-1">Your Location Data is Protected & Isolated</h6>
+                  <p className="text-secondary small mb-2">
+                    Recorded GPS breadcrumb coordinates, routes, and visited location notes are tied strictly to your personal RoomTrail account.
+                    System administrators cannot view your journeys, access your private routes, or track your live whereabouts.
+                  </p>
+                  <div className="d-flex gap-2 flex-wrap">
+                    <Link
+                      to="/travel-history"
+                      className="btn btn-sm btn-outline-primary px-3"
+                      id="privacy-open-travel-history-btn"
+                    >
+                      <i className="bi bi-map me-1"></i> Open Travel History
+                    </Link>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary px-3"
+                      onClick={() => setIsExportModalOpen(true)}
+                      id="privacy-export-travel-history-btn"
+                    >
+                      <i className="bi bi-download me-1"></i> Export Data (CSV/PDF)
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tracking Safety Preferences Card */}
+              <div className="rt-card mb-4" id="tracking-safety-preferences-card">
+                <div className="rt-card-header">
+                  <div>
+                    <h5 className="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                      <i className="bi bi-sliders text-primary"></i>
+                      Tracking Safety Controls
+                    </h5>
+                    <p className="text-muted small mb-0">Configure confirmation dialogs, GPS alerts, and tracking duration reminders</p>
+                  </div>
+                </div>
+                <div className="rt-card-body">
+                  <form onSubmit={handleSaveSafetyPreferences}>
+                    {/* A. Start Tracking Confirmation */}
+                    <div className="p-3 bg-light rounded border mb-3">
+                      <div className="d-flex align-items-center justify-content-between">
+                        <div>
+                          <strong className="text-dark d-block mb-1">
+                            Start Tracking Confirmation
+                          </strong>
+                          <span className="text-muted small">
+                            Prompt for confirmation before starting a new trip recording session to prevent accidental tracking.
+                          </span>
+                        </div>
+                        <div className="form-check form-switch ms-3">
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            role="switch"
+                            id="profile-tracking-confirmation-switch"
+                            style={{ width: '2.5rem', height: '1.3rem', cursor: 'pointer' }}
+                            checked={safetyPreferences.trackingConfirmation}
+                            onChange={(e) =>
+                              setSafetyPreferences({
+                                ...safetyPreferences,
+                                trackingConfirmation: e.target.checked,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* B. Accuracy Warning Threshold */}
+                    <div className="p-3 bg-light rounded border mb-3">
+                      <strong className="text-dark d-block mb-1">
+                        GPS Accuracy Warning Threshold
+                      </strong>
+                      <p className="text-muted small mb-2">
+                        Display a warning banner on Live Tracking when GPS signal accuracy degrades beyond this distance.
+                      </p>
+                      <div className="btn-group btn-group-sm w-100" role="group">
+                        {[25, 50, 100].map((meters) => (
+                          <button
+                            key={meters}
+                            type="button"
+                            className={`btn ${
+                              safetyPreferences.accuracyWarningMeters === meters
+                                ? 'btn-primary'
+                                : 'btn-outline-primary'
+                            }`}
+                            onClick={() =>
+                              setSafetyPreferences({
+                                ...safetyPreferences,
+                                accuracyWarningMeters: meters,
+                              })
+                            }
+                            id={`profile-accuracy-threshold-${meters}-btn`}
+                          >
+                            ±{meters} m {meters === 50 ? '(Default)' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* C. Tracking Reminders */}
+                    <div className="p-3 bg-light rounded border mb-3">
+                      <strong className="text-dark d-block mb-1">
+                        Extended Tracking Reminders
+                      </strong>
+                      <p className="text-muted small mb-2">
+                        Receive an in-app reminder when a trip recording session has been running continuously for an extended time.
+                      </p>
+                      <div className="btn-group btn-group-sm w-100" role="group">
+                        {[
+                          { label: 'Off', val: 0 },
+                          { label: '30 min', val: 30 },
+                          { label: '60 min', val: 60 },
+                          { label: '120 min', val: 120 },
+                        ].map((item) => (
+                          <button
+                            key={item.val}
+                            type="button"
+                            className={`btn ${
+                              safetyPreferences.trackingReminderMinutes === item.val
+                                ? 'btn-primary'
+                                : 'btn-outline-primary'
+                            }`}
+                            onClick={() =>
+                              setSafetyPreferences({
+                                ...safetyPreferences,
+                                trackingReminderMinutes: item.val,
+                              })
+                            }
+                            id={`profile-reminder-interval-${item.val}-btn`}
+                          >
+                            {item.label} {item.val === 60 ? '(Default)' : ''}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="d-flex justify-content-end">
+                      <button
+                        type="submit"
+                        className="btn btn-sm btn-primary px-3"
+                        disabled={savingSafety}
+                        id="save-privacy-settings-btn"
+                      >
+                        {savingSafety ? (
+                          <>
+                            <span className="spinner-border spinner-border-sm me-1" role="status"></span>
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <i className="bi bi-check2-circle me-1"></i> Save Safety Preferences
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+
+              {/* Manage & Delete Recorded Trips Table */}
+              <div className="rt-card" id="manage-recorded-trips-card">
+                <div className="rt-card-header d-flex justify-content-between align-items-center">
+                  <div>
+                    <h5 className="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                      <i className="bi bi-trash3 text-danger"></i>
+                      Manage & Delete Recorded Trips
+                    </h5>
+                    <p className="text-muted small mb-0">
+                      Permanently delete individual journeys and their recorded GPS breadcrumbs
+                    </p>
+                  </div>
+                  <span className="badge bg-secondary">
+                    {userTrips.length} {userTrips.length === 1 ? 'Trip' : 'Trips'}
+                  </span>
+                </div>
+                <div className="rt-card-body p-0">
+                  {loadingTrips ? (
+                    <div className="text-center py-4">
+                      <div className="spinner-border text-primary spinner-border-sm mb-2" role="status"></div>
+                      <p className="text-muted small mb-0">Loading your journeys...</p>
+                    </div>
+                  ) : userTrips.length === 0 ? (
+                    <div className="text-center py-4 text-muted small">
+                      <i className="bi bi-geo-alt fs-3 d-block text-secondary mb-2"></i>
+                      No recorded trips found. Start tracking from <strong>Live Tracking</strong> to record journeys.
+                    </div>
+                  ) : (
+                    <div className="table-responsive">
+                      <table className="table table-hover align-middle mb-0" id="privacy-trips-table">
+                        <thead className="table-light text-secondary small">
+                          <tr>
+                            <th>Journey</th>
+                            <th>Date</th>
+                            <th>Distance</th>
+                            <th>Duration</th>
+                            <th className="text-end">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {userTrips.map((trip) => (
+                            <tr key={trip.id} id={`privacy-trip-row-${trip.id}`}>
+                              <td>
+                                <div className="fw-bold text-dark small">
+                                  {trip.tripName || trip.title || 'Untitled Journey'}
+                                </div>
+                                <div className="text-muted" style={{ fontSize: '11px' }}>
+                                  {trip.startLocation || 'Start'} &rarr; {trip.endLocation || 'End'}
+                                </div>
+                              </td>
+                              <td className="small text-muted">
+                                {formatDate(trip.startTime || trip.scheduledDate || trip.createdAt)}
+                              </td>
+                              <td className="small fw-semibold text-dark">
+                                {trip.totalDistance || '0 km'}
+                              </td>
+                              <td className="small text-muted">
+                                {trip.totalDuration || '0 mins'}
+                              </td>
+                              <td className="text-end">
+                                <div className="d-flex justify-content-end gap-1">
+                                  <Link
+                                    to={`/travel-history?view=timeline&tripId=${trip.id}`}
+                                    className="btn btn-sm btn-outline-primary px-2"
+                                    title="View Timeline"
+                                    id={`privacy-timeline-trip-${trip.id}`}
+                                  >
+                                    <i className="bi bi-clock-history"></i>
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-outline-danger px-2"
+                                    onClick={() => handleDeleteTripPrompt(trip)}
+                                    id={`privacy-delete-trip-${trip.id}`}
+                                    title="Permanently Delete Trip"
+                                  >
+                                    <i className="bi bi-trash3"></i>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Phase 7: Export Travel History Modal */}
+      <ExportTravelHistoryModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        trips={userTrips}
+      />
+
+      {/* Phase 8: Trip Deletion Confirmation Modal */}
+      <DeleteTripConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setTripToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteTrip}
+        trip={tripToDelete}
+        isDeleting={isDeletingTrip}
+      />
     </div>
   );
 };

@@ -1,8 +1,13 @@
 import axios from 'axios';
 import { storage } from '../utils/storage';
 
-// Connect to Java 21 Spring Boot 3 REST Backend (Port 8080)
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
+// Centralized API Base URL configuration:
+// Prioritizes VITE_API_BASE_URL (configured in Vercel environment variables),
+// with backwards compatibility for VITE_API_URL and automatic local dev fallback.
+const BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? 'http://localhost:8080/api' : '/api');
 
 const apiClient = axios.create({
   baseURL: BASE_URL,

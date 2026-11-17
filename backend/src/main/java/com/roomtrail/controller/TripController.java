@@ -1,6 +1,7 @@
 package com.roomtrail.controller;
 
 import com.roomtrail.dto.TripRouteHistoryDto;
+import com.roomtrail.dto.TripTimelineDto;
 import com.roomtrail.entity.RoutePoint;
 import com.roomtrail.entity.Trip;
 import com.roomtrail.security.UserPrincipal;
@@ -102,25 +103,56 @@ public class TripController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTrip(@PathVariable String id, Authentication authentication) {
+        Long authenticatedId = getUserId(authentication);
+        if (authenticatedId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        if (isAdmin(authentication)) {
+            // Admins are prohibited from modifying or deleting private user trips
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        Trip trip = tripService.getById(id);
+        if (trip == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!isOwner(trip.getUserId(), authenticatedId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        tripService.deleteTripWithRelated(id, authenticatedId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/timeline")
+    public ResponseEntity<TripTimelineDto> getTripTimeline(@PathVariable String id, Authentication authentication) {
         Trip trip = tripService.getById(id);
         if (trip == null) {
             return ResponseEntity.notFound().build();
         }
         Long authenticatedId = getUserId(authentication);
-        if (!isAdmin(authentication) && !isOwner(trip.getUserId(), authenticatedId)) {
+        if (authenticatedId == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        // Personal notes and trip timelines are strictly isolated to the trip owner
+        if (!isOwner(trip.getUserId(), authenticatedId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
-        tripService.delete(id);
-        return ResponseEntity.noContent().build();
+        TripTimelineDto timeline = tripService.getTripTimeline(id, authenticatedId);
+        if (timeline == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(timeline);
     }
 
     @GetMapping("/{tripId}/route-points")
     public ResponseEntity<List<RoutePoint>> getTripRoutePoints(@PathVariable String tripId, Authentication authentication) {
+        Long authenticatedId = getUserId(authentication);
+        if (authenticatedId == null && !isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         Trip trip = tripService.getById(tripId);
         if (trip == null) {
             return ResponseEntity.notFound().build();
         }
-        Long authenticatedId = getUserId(authentication);
         if (!isAdmin(authentication) && !isOwner(trip.getUserId(), authenticatedId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
@@ -131,11 +163,14 @@ public class TripController {
     public ResponseEntity<RoutePoint> createTripRoutePoint(@PathVariable String tripId,
                                                            @RequestBody RoutePoint point,
                                                            Authentication authentication) {
+        Long authenticatedId = getUserId(authentication);
+        if (authenticatedId == null && !isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
         Trip trip = tripService.getById(tripId);
         if (trip == null) {
             return ResponseEntity.notFound().build();
         }
-        Long authenticatedId = getUserId(authentication);
         if (!isAdmin(authentication) && !isOwner(trip.getUserId(), authenticatedId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
@@ -144,6 +179,25 @@ public class TripController {
         }
         RoutePoint created = routePointService.create(point);
         return new ResponseEntity<>(created, HttpStatus.CREATED);
+    }
+
+    @PostMapping("/{tripId}/route-points/batch")
+    public ResponseEntity<List<RoutePoint>> createTripRoutePointsBatch(@PathVariable String tripId,
+                                                                       @RequestBody List<RoutePoint> points,
+                                                                       Authentication authentication) {
+        Long authenticatedId = getUserId(authentication);
+        if (authenticatedId == null && !isAdmin(authentication)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Trip trip = tripService.getById(tripId);
+        if (trip == null) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!isAdmin(authentication) && !isOwner(trip.getUserId(), authenticatedId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+        List<RoutePoint> saved = routePointService.saveBatch(tripId, points);
+        return new ResponseEntity<>(saved, HttpStatus.CREATED);
     }
 
     private Long getUserId(Authentication authentication) {
@@ -161,7 +215,7 @@ public class TripController {
 
     private boolean isOwner(String entityUserId, Long authenticatedId) {
         if (authenticatedId == null) return false;
-        if (entityUserId == null) return true;
+        if (entityUserId == null) return false;
         try {
             return Long.parseLong(entityUserId.trim()) == authenticatedId;
         } catch (NumberFormatException e) {

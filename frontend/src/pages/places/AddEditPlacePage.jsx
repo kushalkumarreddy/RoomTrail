@@ -46,7 +46,7 @@ const AddEditPlacePage = () => {
     priority: 'medium',
     rent: '',
     address: '',
-    city: user?.city || 'Bengaluru, India',
+    city: user?.city || 'Hyderabad, India',
     latitude: initialLat,
     longitude: initialLng,
     contactPerson: '',
@@ -272,8 +272,8 @@ const AddEditPlacePage = () => {
   useEffect(() => {
     if (!miniMapContainer.current) return;
 
-    const defaultLat = formData.latitude ? parseFloat(formData.latitude) : (user?.homeCoordinates?.lat || 12.9716);
-    const defaultLng = formData.longitude ? parseFloat(formData.longitude) : (user?.homeCoordinates?.lng || 77.5946);
+    const defaultLat = formData.latitude ? parseFloat(formData.latitude) : (user?.homeCoordinates?.lat || 17.4938);
+    const defaultLng = formData.longitude ? parseFloat(formData.longitude) : (user?.homeCoordinates?.lng || 78.3968);
 
     if (!miniMapInstance.current) {
       const map = L.map(miniMapContainer.current, {
@@ -708,7 +708,7 @@ const AddEditPlacePage = () => {
                       type="text"
                       name="city"
                       className="form-control"
-                      placeholder="e.g. Bengaluru, India"
+                      placeholder="e.g. Hyderabad, India"
                       value={formData.city}
                       onChange={handleChange}
                     />
@@ -751,7 +751,7 @@ const AddEditPlacePage = () => {
                             step="any"
                             name="latitude"
                             className={`form-control ${errors.coordinates ? 'is-invalid' : ''}`}
-                            placeholder="Latitude (e.g. 12.9716)"
+                            placeholder="Latitude (e.g. 17.4938)"
                             value={formData.latitude}
                             onChange={handleChange}
                           />
@@ -762,7 +762,7 @@ const AddEditPlacePage = () => {
                             step="any"
                             name="longitude"
                             className={`form-control ${errors.coordinates ? 'is-invalid' : ''}`}
-                            placeholder="Longitude (e.g. 77.5946)"
+                            placeholder="Longitude (e.g. 78.3968)"
                             value={formData.longitude}
                             onChange={handleChange}
                           />

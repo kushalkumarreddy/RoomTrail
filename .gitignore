@@ -1,5 +1,36 @@
+# ==========================================
+# RoomTrail Root .gitignore
+# ==========================================
+
+# Compiled & Build Artifacts
+backend/target/
+frontend/dist/
+frontend/dist-ssr/
+*.jar
+*.war
+dist/
+build/
+
+# Node Dependencies
+node_modules/
+frontend/node_modules/
+.pnp
+.pnp.js
+
+# Environment Variables & Secrets (CRITICAL SECURITY: NEVER COMMIT)
+.env
+.env.*
+*.env
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,18 +38,35 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Database Dumps & Sensitive Data
+database_backup/
+*.sql
+*.sql.gz
+*.tar.gz
 
-# Editor directories and files
+# IDE & Editor Configuration
+.idea/
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+*.iml
+*.iws
+*.ipr
+.project
+.classpath
+.settings/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+.DS_Store
+Thumbs.db
+
+# Vite & Temporary Cache Files
+.vite/
+.vite-temp/
+frontend/.vite/
+frontend/.vite-temp/
+scratch/
+tmp/
+temp/

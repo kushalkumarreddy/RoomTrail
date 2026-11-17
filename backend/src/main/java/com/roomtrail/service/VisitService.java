@@ -19,7 +19,10 @@ public class VisitService {
 
     public List<Visit> getAll(Long userId, String tripId) {
         if (tripId != null && !tripId.trim().isEmpty()) {
-            return visitRepository.findByTripId(tripId);
+            if (userId != null) {
+                return visitRepository.findByTripIdAndUserId(tripId.trim(), userId);
+            }
+            return visitRepository.findByTripId(tripId.trim());
         } else if (userId != null) {
             return visitRepository.findByUserId(userId);
         }

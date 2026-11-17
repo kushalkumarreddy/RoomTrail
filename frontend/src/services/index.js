@@ -16,3 +16,5 @@ export { geocodingService } from './geocodingService';
 export { authService } from './authService';
 export { adminService } from './adminService';
 export { trackingService } from './trackingService';
+export { inspectionService } from './inspectionService';
+export { exportService } from './exportService';

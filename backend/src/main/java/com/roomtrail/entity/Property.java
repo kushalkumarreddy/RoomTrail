@@ -26,7 +26,7 @@ public class Property {
     private String address;
 
     @Column(length = 100)
-    private String city = "Bengaluru";
+    private String city = "Hyderabad";
 
     private Double latitude;
     private Double longitude;
@@ -78,6 +78,9 @@ public class Property {
     @Column(name = "amenity")
     private List<String> amenities = new ArrayList<>();
 
+    @Column(name = "is_favorite", nullable = false)
+    private Boolean isFavorite = false;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -99,6 +102,7 @@ public class Property {
         if (contactPhone == null && contactNumber != null) contactPhone = contactNumber;
         if (lastVisitedAt == null && visitedAt != null) lastVisitedAt = visitedAt;
         if (visitedAt == null && lastVisitedAt != null) visitedAt = lastVisitedAt;
+        if (isFavorite == null) isFavorite = false;
     }
 
     @PreUpdate
@@ -108,6 +112,7 @@ public class Property {
         if (contactPhone == null && contactNumber != null) contactPhone = contactNumber;
         if (lastVisitedAt == null && visitedAt != null) lastVisitedAt = visitedAt;
         if (visitedAt == null && lastVisitedAt != null) visitedAt = lastVisitedAt;
+        if (isFavorite == null) isFavorite = false;
     }
 
     // Getters and Setters
@@ -222,4 +227,11 @@ public class Property {
 
     public LocalDateTime getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(LocalDateTime updatedAt) { this.updatedAt = updatedAt; }
+
+    public Boolean getIsFavorite() { return isFavorite != null ? isFavorite : false; }
+    public void setIsFavorite(Boolean isFavorite) { this.isFavorite = isFavorite != null ? isFavorite : false; }
+
+    public Boolean isFavorite() { return getIsFavorite(); }
+    public Boolean getFavorite() { return getIsFavorite(); }
+    public void setFavorite(Boolean favorite) { setIsFavorite(favorite); }
 }

@@ -3,17 +3,39 @@ import { Link, useSearchParams } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useAuth } from '../../hooks/useAuth';
+import { useNotification } from '../../hooks/useNotification';
 import { tripService, tripSummaryService, propertyService, visitService, routePointService } from '../../services';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import Modal from '../../components/common/Modal';
 import FullTravelMap from '../../components/history/FullTravelMap';
-import { formatDate, formatDistance, formatDurationSeconds, getCategoryIcon, calculateDistanceMeters } from '../../utils/formatters';
+import TripTimelineView from '../../components/history/TripTimelineView';
+import ExportTravelHistoryModal from '../../components/history/ExportTravelHistoryModal';
+import DeleteTripConfirmModal from '../../components/history/DeleteTripConfirmModal';
+import { formatDate, formatDistance, formatDurationSeconds, getCategoryIcon, calculateDistanceMeters, hasSufficientGpsRoute, buildRouteSegments } from '../../utils/formatters';
 
 const TravelHistoryPage = () => {
   const { user } = useAuth();
+  const { showSuccess, showError } = useNotification();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [viewMode, setViewMode] = useState(searchParams.get('mode') === 'map' ? 'map' : 'list');
+  const initialMode = searchParams.get('mode');
+  const initialView = searchParams.get('view');
+  const initialTripId = searchParams.get('tripId');
+
+  const [viewMode, setViewMode] = useState(
+    initialView === 'timeline' && initialTripId ? 'timeline' : initialMode === 'map' ? 'map' : 'list'
+  );
+  const [timelineTripId, setTimelineTripId] = useState(
+    initialView === 'timeline' && initialTripId ? initialTripId : null
+  );
+
+  // Phase 7: Export Travel History Modal
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  // Phase 8: Trip Deletion State
+  const [tripToDelete, setTripToDelete] = useState(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingTrip, setIsDeletingTrip] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [trips, setTrips] = useState([]);
@@ -70,6 +92,35 @@ const TravelHistoryPage = () => {
   useEffect(() => {
     loadData();
   }, [user]);
+
+  // Synchronize viewMode and active timeline trip from URL search parameters
+  useEffect(() => {
+    const v = searchParams.get('view');
+    const tid = searchParams.get('tripId');
+    const m = searchParams.get('mode');
+    if (v === 'timeline' && tid) {
+      setViewMode('timeline');
+      setTimelineTripId(tid);
+    } else if (m === 'map') {
+      setViewMode('map');
+      setTimelineTripId(null);
+    } else {
+      setViewMode('list');
+      setTimelineTripId(null);
+    }
+  }, [searchParams]);
+
+  const handleViewTimeline = (journey) => {
+    setTimelineTripId(journey.id);
+    setViewMode('timeline');
+    setSearchParams({ view: 'timeline', tripId: journey.id });
+  };
+
+  const handleBackFromTimeline = () => {
+    setTimelineTripId(null);
+    setViewMode('list');
+    setSearchParams({});
+  };
 
   // Helpers for formatting trip times
   const formatTripTime = (raw) => {
@@ -156,23 +207,36 @@ const TravelHistoryPage = () => {
       });
       setRoutePoints(sorted);
 
-      if (sorted.length === 2) {
-        const p1 = sorted[0];
-        const p2 = sorted[1];
-        const d = calculateDistanceMeters(
-          p1.latitude || p1.lat, p1.longitude || p1.lng,
-          p2.latitude || p2.lat, p2.longitude || p2.lng
-        );
-        setRouteEndpointsOnly(d > 200);
-      } else {
-        setRouteEndpointsOnly(false);
-      }
+      const hasRoute = hasSufficientGpsRoute(sorted);
+      setRouteEndpointsOnly(!hasRoute);
     } catch (e) {
       console.warn('Could not load route points for journey', e);
       setRoutePoints([]);
-      setRouteEndpointsOnly(false);
+      setRouteEndpointsOnly(true);
     } finally {
       setLoadingRoute(false);
+    }
+  };
+
+  const handleDeleteTripPrompt = (trip) => {
+    setTripToDelete(trip);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDeleteTrip = async () => {
+    if (!tripToDelete) return;
+    setIsDeletingTrip(true);
+    try {
+      await tripService.delete(tripToDelete.id);
+      showSuccess(`Trip "${tripToDelete.tripName || tripToDelete.title || 'Journey'}" and its location data have been deleted.`);
+      setIsDeleteModalOpen(false);
+      setTripToDelete(null);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to delete trip', err);
+      showError(err.response?.data?.message || 'Failed to delete trip. Please try again.');
+    } finally {
+      setIsDeletingTrip(false);
     }
   };
 
@@ -209,43 +273,25 @@ const TravelHistoryPage = () => {
       const boundsGroup = [];
 
       // 1. Draw Actual Travelled Route (Purple Polyline #7c3aed) using original recorded GPS points
-      if (routePoints && routePoints.length > 0) {
-        const sortedPoints = [...routePoints]
-          .filter((pt) => (pt.latitude || pt.lat) && (pt.longitude || pt.lng))
-          .sort((a, b) => {
-            const seqA = a.sequenceNumber != null ? a.sequenceNumber : 0;
-            const seqB = b.sequenceNumber != null ? b.sequenceNumber : 0;
-            if (seqA !== seqB) return seqA - seqB;
-            const timeA = new Date(a.recordedAt || a.timestamp || 0).getTime();
-            const timeB = new Date(b.recordedAt || b.timestamp || 0).getTime();
-            if (timeA !== timeB) return timeA - timeB;
-            return String(a.id || '').localeCompare(String(b.id || ''));
-          });
+      const hasRoute = hasSufficientGpsRoute(routePoints);
 
-        const latLngs = sortedPoints.map((pt) => [
-          Number(pt.latitude || pt.lat),
-          Number(pt.longitude || pt.lng),
-        ]);
+      if (hasRoute) {
+        const segments = buildRouteSegments(routePoints);
 
-        const isTwoPointEndpointsOnly =
-          latLngs.length === 2 &&
-          calculateDistanceMeters(latLngs[0][0], latLngs[0][1], latLngs[1][0], latLngs[1][1]) > 200;
+        if (segments.length > 0) {
+          segments.forEach((seg) => seg.forEach((ll) => boundsGroup.push(ll)));
 
-        if (latLngs.length > 0) {
-          latLngs.forEach((ll) => boundsGroup.push(ll));
-
-          // Draw purple polyline connecting the chronological GPS points (only if not an older 2-endpoint trip)
-          if (latLngs.length > 1 && !isTwoPointEndpointsOnly) {
-            L.polyline(latLngs, {
-              color: '#7c3aed',
-              weight: 5,
-              opacity: 0.9,
-              lineJoin: 'round',
-              smoothFactor: 1,
-            }).addTo(map);
-          }
+          // Draw purple polyline connecting the chronological GPS breadcrumb points along the actual travelled route
+          L.polyline(segments, {
+            color: '#7c3aed',
+            weight: 5,
+            opacity: 0.9,
+            lineJoin: 'round',
+            smoothFactor: 1,
+          }).addTo(map);
 
           // A. Starting Point Marker (Green Start Pin)
+          const startCoord = segments[0][0];
           const startIcon = L.divIcon({
             className: 'custom-start-marker',
             html: `
@@ -257,19 +303,20 @@ const TravelHistoryPage = () => {
             iconAnchor: [17, 17],
           });
 
-          const startMarker = L.marker(latLngs[0], { icon: startIcon, zIndexOffset: 950 }).addTo(map);
+          const startMarker = L.marker(startCoord, { icon: startIcon, zIndexOffset: 950 }).addTo(map);
           startMarker.bindPopup(`
             <div style="font-size: 12px; font-family: sans-serif; padding: 2px;">
               <strong style="color: #10b981; font-size: 13px;"><i class="bi bi-flag-fill me-1"></i>Starting Point</strong><br/>
               <span style="color: #0b192c; font-weight: 600;">Time: ${formatTripTime(selectedJourney.startTime)}</span><br/>
               <span style="color: #64748b;">${selectedJourney.startLocation || 'Journey Start'}</span><br/>
-              <span class="text-muted" style="font-size: 10px;">${latLngs[0][0].toFixed(5)}°, ${latLngs[0][1].toFixed(5)}°</span>
+              <span class="text-muted" style="font-size: 10px;">${startCoord[0].toFixed(5)}°, ${startCoord[1].toFixed(5)}°</span>
             </div>
           `);
 
           // B. Ending Point Marker (Red Finish Pin)
-          if (latLngs.length > 1) {
-            const endCoord = latLngs[latLngs.length - 1];
+          const lastSeg = segments[segments.length - 1];
+          const endCoord = lastSeg[lastSeg.length - 1];
+          if (endCoord && (endCoord[0] !== startCoord[0] || endCoord[1] !== startCoord[1])) {
             const endIcon = L.divIcon({
               className: 'custom-end-marker',
               html: `
@@ -291,6 +338,63 @@ const TravelHistoryPage = () => {
               </div>
             `);
           }
+        }
+      } else {
+        // Insufficient GPS breadcrumb points (0 points, or only coarse start/end coordinates).
+        // DO NOT draw a fake straight line between endpoints!
+        // Render Green Start Pin and Red Finish Pin if coordinates exist.
+        const startLat = selectedJourney.startLat || (routePoints && routePoints[0] ? (routePoints[0].latitude || routePoints[0].lat) : null);
+        const startLng = selectedJourney.startLng || (routePoints && routePoints[0] ? (routePoints[0].longitude || routePoints[0].lng) : null);
+
+        if (startLat && startLng) {
+          const startPt = [Number(startLat), Number(startLng)];
+          boundsGroup.push(startPt);
+          const startIcon = L.divIcon({
+            className: 'custom-start-marker',
+            html: `
+              <div style="background-color: #10b981; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.35); color: #ffffff;">
+                <i class="bi bi-geo-alt-fill" style="font-size: 16px;"></i>
+              </div>
+            `,
+            iconSize: [34, 34],
+            iconAnchor: [17, 17],
+          });
+          const startMarker = L.marker(startPt, { icon: startIcon, zIndexOffset: 950 }).addTo(map);
+          startMarker.bindPopup(`
+            <div style="font-size: 12px; font-family: sans-serif; padding: 2px;">
+              <strong style="color: #10b981; font-size: 13px;"><i class="bi bi-flag-fill me-1"></i>Starting Point</strong><br/>
+              <span style="color: #0b192c; font-weight: 600;">Time: ${formatTripTime(selectedJourney.startTime)}</span><br/>
+              <span style="color: #64748b;">${selectedJourney.startLocation || 'Journey Start'}</span><br/>
+              <span class="text-muted" style="font-size: 10px;">${startPt[0].toFixed(5)}°, ${startPt[1].toFixed(5)}°</span>
+            </div>
+          `);
+        }
+
+        const endLat = selectedJourney.endLat || (routePoints && routePoints.length > 1 ? (routePoints[routePoints.length - 1].latitude || routePoints[routePoints.length - 1].lat) : null);
+        const endLng = selectedJourney.endLng || (routePoints && routePoints.length > 1 ? (routePoints[routePoints.length - 1].longitude || routePoints[routePoints.length - 1].lng) : null);
+
+        if (endLat && endLng) {
+          const endPt = [Number(endLat), Number(endLng)];
+          boundsGroup.push(endPt);
+          const endIcon = L.divIcon({
+            className: 'custom-end-marker',
+            html: `
+              <div style="background-color: #ef4444; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 2px solid #ffffff; box-shadow: 0 4px 10px rgba(0,0,0,0.35); color: #ffffff;">
+                <i class="bi bi-flag-fill" style="font-size: 15px;"></i>
+              </div>
+            `,
+            iconSize: [34, 34],
+            iconAnchor: [17, 17],
+          });
+          const endMarker = L.marker(endPt, { icon: endIcon, zIndexOffset: 950 }).addTo(map);
+          endMarker.bindPopup(`
+            <div style="font-size: 12px; font-family: sans-serif; padding: 2px;">
+              <strong style="color: #ef4444; font-size: 13px;"><i class="bi bi-check-circle-fill me-1"></i>Ending Point</strong><br/>
+              <span style="color: #0b192c; font-weight: 600;">Time: ${formatTripEndTime(selectedJourney.endTime, selectedJourney.status)}</span><br/>
+              <span style="color: #64748b;">${selectedJourney.endLocation || 'Journey Destination'}</span><br/>
+              <span class="text-muted" style="font-size: 10px;">${endPt[0].toFixed(5)}°, ${endPt[1].toFixed(5)}°</span>
+            </div>
+          `);
         }
       }
 
@@ -379,13 +483,14 @@ const TravelHistoryPage = () => {
         </div>
 
         <div className="d-flex gap-2 align-items-center flex-wrap">
-          {/* View Mode Toggle: Journeys List vs Full Travel Map */}
+          {/* View Mode Toggle: Journeys List vs Full Travel Map vs Timeline */}
           <div className="btn-group btn-group-sm" role="group" aria-label="Travel History View Mode" id="travel-history-view-toggle">
             <button
               type="button"
               className={`btn ${viewMode === 'list' ? 'btn-primary' : 'btn-outline-primary'}`}
               onClick={() => {
                 setViewMode('list');
+                setTimelineTripId(null);
                 setSearchParams({});
               }}
               id="history-view-list-toggle"
@@ -397,14 +502,33 @@ const TravelHistoryPage = () => {
               className={`btn ${viewMode === 'map' ? 'btn-primary' : 'btn-outline-primary'}`}
               onClick={() => {
                 setViewMode('map');
+                setTimelineTripId(null);
                 setSearchParams({ mode: 'map' });
               }}
               id="history-view-map-toggle"
             >
               <i className="bi bi-map-fill me-1"></i> Full Travel Map
             </button>
+            {viewMode === 'timeline' && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                id="history-view-timeline-active-toggle"
+              >
+                <i className="bi bi-clock-history me-1"></i> Timeline
+              </button>
+            )}
           </div>
 
+          <button
+            type="button"
+            className="btn btn-outline-success btn-sm d-flex align-items-center gap-1"
+            onClick={() => setIsExportModalOpen(true)}
+            id="history-export-btn"
+            title="Export Travel History (CSV / PDF / Route Points)"
+          >
+            <i className="bi bi-download"></i> Export History
+          </button>
           <Link to="/live-tracking" className="btn btn-rt-primary btn-sm" id="history-live-tracking-btn">
             <i className="bi bi-broadcast"></i> Live Tracking
           </Link>
@@ -414,13 +538,23 @@ const TravelHistoryPage = () => {
         </div>
       </div>
 
-      {/* Conditionally render Full Travel Map OR Journeys List Table */}
+      {/* Conditionally render Full Travel Map OR Trip Timeline OR Journeys List Table */}
       {viewMode === 'map' ? (
         <FullTravelMap
           onBackToList={() => {
             setViewMode('list');
             setSearchParams({});
           }}
+        />
+      ) : viewMode === 'timeline' && timelineTripId ? (
+        <TripTimelineView
+          tripId={timelineTripId}
+          onBack={handleBackFromTimeline}
+          onOpenMap={(journeyData) => {
+            const matched = journeys.find((j) => String(j.id) === String(timelineTripId)) || journeyData;
+            handleViewRoute(matched);
+          }}
+          journey={journeys.find((j) => String(j.id) === String(timelineTripId))}
         />
       ) : journeys.length === 0 ? (
         <EmptyState
@@ -492,14 +626,34 @@ const TravelHistoryPage = () => {
                     </span>
                   </td>
                   <td className="text-end">
-                    <button
-                      type="button"
-                      className="btn btn-sm btn-rt-primary px-3"
-                      onClick={() => handleViewRoute(j)}
-                      id={`travel-history-view-route-${j.id}`}
-                    >
-                      <i className="bi bi-map me-1"></i> View Route
-                    </button>
+                    <div className="d-flex justify-content-end gap-1">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-primary px-2"
+                        onClick={() => handleViewTimeline(j)}
+                        id={`travel-history-view-timeline-${j.id}`}
+                        title="View Chronological Stop Timeline"
+                      >
+                        <i className="bi bi-clock-history me-1"></i> Timeline
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-rt-primary px-3"
+                        onClick={() => handleViewRoute(j)}
+                        id={`travel-history-view-route-${j.id}`}
+                      >
+                        <i className="bi bi-map me-1"></i> View Route
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-danger px-2"
+                        onClick={() => handleDeleteTripPrompt(j)}
+                        id={`travel-history-delete-btn-${j.id}`}
+                        title="Delete Trip & Location Data"
+                      >
+                        <i className="bi bi-trash3"></i>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -575,7 +729,7 @@ const TravelHistoryPage = () => {
               <div className="alert alert-info py-2 px-3 mb-2 small d-flex align-items-center gap-2" id="endpoints-only-notice">
                 <i className="bi bi-info-circle-fill text-primary fs-6"></i>
                 <div>
-                  <strong>Notice:</strong> Exact historical path cannot be recovered for this older trip as only starting and ending coordinates were recorded. Real-time GPS tracking captures the full winding route with all turns and curves.
+                  <strong>Notice:</strong> Detailed GPS route was not recorded for this trip.
                 </div>
               </div>
             )}
@@ -598,6 +752,25 @@ const TravelHistoryPage = () => {
           </div>
         )}
       </Modal>
+
+      {/* Phase 7: Export Travel History Modal */}
+      <ExportTravelHistoryModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        trips={trips}
+      />
+
+      {/* Phase 8: Trip Deletion Confirmation Modal */}
+      <DeleteTripConfirmModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setTripToDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteTrip}
+        trip={tripToDelete}
+        isDeleting={isDeletingTrip}
+      />
     </div>
   );
 };

@@ -147,3 +147,136 @@ export const getCategoryIcon = (category) => {
       return 'bi-pin-map';
   }
 };
+
+/**
+ * Evaluates whether an array of GPS route points represents an authentic, detailed
+ * recorded route following roads and turns, as opposed to missing data, 0 points,
+ * or 2-3 artificial/endpoint-only straight line coordinates.
+ */
+export const hasSufficientGpsRoute = (points = []) => {
+  if (!points || !Array.isArray(points)) return false;
+  const validPoints = points.filter(
+    (pt) => pt && (pt.latitude || pt.lat) != null && (pt.longitude || pt.lng) != null
+  );
+
+  // Less than 2 points cannot form any path
+  if (validPoints.length < 2) return false;
+
+  // Exactly 2 points: if distance between them is > 100m, they are only endpoints, not a detailed breadcrumb route
+  if (validPoints.length === 2) {
+    const p1 = validPoints[0];
+    const p2 = validPoints[1];
+    const d = calculateDistanceMeters(
+      p1.latitude ?? p1.lat, p1.longitude ?? p1.lng,
+      p2.latitude ?? p2.lat, p2.longitude ?? p2.lng
+    );
+    return d <= 100;
+  }
+
+  // 3 points: if any consecutive leg is > 500m or total path > 1 km with only 3 points,
+  // this is an artificial straight-line placeholder (e.g. start, midpoint, end), not a recorded street breadcrumb path.
+  if (validPoints.length === 3) {
+    for (let i = 1; i < validPoints.length; i++) {
+      const legDist = calculateDistanceMeters(
+        validPoints[i - 1].latitude ?? validPoints[i - 1].lat,
+        validPoints[i - 1].longitude ?? validPoints[i - 1].lng,
+        validPoints[i].latitude ?? validPoints[i].lat,
+        validPoints[i].longitude ?? validPoints[i].lng
+      );
+      if (legDist > 500) return false;
+    }
+  }
+
+  // If points exist and are sufficiently detailed (4+ points or continuous short intervals)
+  return true;
+};
+
+/**
+ * Calculate forward azimuth/bearing in degrees (0 - 360) from coord 1 to coord 2
+ */
+export const calculateBearing = (lat1, lon1, lat2, lon2) => {
+  const phi1 = (Number(lat1) * Math.PI) / 180;
+  const phi2 = (Number(lat2) * Math.PI) / 180;
+  const deltaLambda = ((Number(lon2) - Number(lon1)) * Math.PI) / 180;
+
+  const y = Math.sin(deltaLambda) * Math.cos(phi2);
+  const x =
+    Math.cos(phi1) * Math.sin(phi2) -
+    Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+  const theta = Math.atan2(y, x);
+  return (theta * 180 / Math.PI + 360) % 360;
+};
+
+/**
+ * Builds contiguous Leaflet coordinate segments from ordered GPS route points.
+ * Preserves separate legs across pauses and recording gaps, avoiding artificial
+ * straight lines connecting the paused gap.
+ * Returns an array of segment arrays: [ [ [lat1, lng1], [lat2, lng2] ], [ ... ] ]
+ */
+export const buildRouteSegments = (points = []) => {
+  if (!points || !Array.isArray(points)) return [];
+
+  const valid = [...points]
+    .filter((pt) => pt && (pt.latitude || pt.lat) != null && (pt.longitude || pt.lng) != null)
+    .sort((a, b) => {
+      const seqA = a.sequenceNumber != null ? a.sequenceNumber : 0;
+      const seqB = b.sequenceNumber != null ? b.sequenceNumber : 0;
+      if (seqA !== seqB) return seqA - seqB;
+      const timeA = new Date(a.recordedAt || a.timestamp || 0).getTime();
+      const timeB = new Date(b.recordedAt || b.timestamp || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    });
+
+  if (valid.length === 0) return [];
+
+  const segments = [];
+  let currentSegment = [];
+
+  for (let i = 0; i < valid.length; i++) {
+    const pt = valid[i];
+    const lat = Number(pt.latitude ?? pt.lat);
+    const lng = Number(pt.longitude ?? pt.lng);
+    const coord = [lat, lng];
+
+    if (currentSegment.length === 0) {
+      currentSegment.push(coord);
+      continue;
+    }
+
+    const prevPt = valid[i - 1];
+    const prevLat = Number(prevPt.latitude ?? prevPt.lat);
+    const prevLng = Number(prevPt.longitude ?? prevPt.lng);
+
+    // Segment break detection:
+    // 1. Explicit segmentIndex change (from pause/resume)
+    const hasDifferentSegmentIndex =
+      pt.segmentIndex != null &&
+      prevPt.segmentIndex != null &&
+      pt.segmentIndex !== prevPt.segmentIndex;
+
+    // 2. Large temporal gap (> 180 seconds) or physical jump (> 300m)
+    const timeA = new Date(prevPt.recordedAt || prevPt.timestamp || 0).getTime();
+    const timeB = new Date(pt.recordedAt || pt.timestamp || 0).getTime();
+    const timeGapSec = Math.abs(timeB - timeA) / 1000;
+    const distMeters = calculateDistanceMeters(prevLat, prevLng, lat, lng);
+    const isUnconnectedGap = timeGapSec > 180 && distMeters > 300;
+
+    if (hasDifferentSegmentIndex || isUnconnectedGap) {
+      if (currentSegment.length > 0) {
+        segments.push(currentSegment);
+      }
+      currentSegment = [coord];
+    } else {
+      currentSegment.push(coord);
+    }
+  }
+
+  if (currentSegment.length > 0) {
+    segments.push(currentSegment);
+  }
+
+  return segments;
+};
+
+

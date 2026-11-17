@@ -23,6 +23,11 @@ export const tripService = {
     return response.data || [];
   },
 
+  getTimeline: async (tripId) => {
+    const response = await apiClient.get(`/trips/${tripId}/timeline`);
+    return response.data;
+  },
+
   create: async (data) => {
     const now = new Date().toISOString();
     const payload = {
@@ -31,10 +36,10 @@ export const tripService = {
       tripName: data.tripName || data.title || 'Untitled Trip',
       title: data.title || data.tripName || 'Untitled Trip',
       description: data.description || '',
-      startLocation: data.startLocation || 'Bengaluru Base',
-      startCoordinates: data.startCoordinates || { lat: 12.9716, lng: 77.5946 },
-      endLocation: data.endLocation || 'Indiranagar Central',
-      endCoordinates: data.endCoordinates || { lat: 12.9784, lng: 77.6408 },
+      startLocation: data.startLocation || 'Hyderabad Base',
+      startCoordinates: data.startCoordinates || { lat: 17.4938, lng: 78.3968 },
+      endLocation: data.endLocation || 'Cyber Towers, Hitech City',
+      endCoordinates: data.endCoordinates || { lat: 17.4504, lng: 78.3811 },
       startTime: data.startTime || data.scheduledDate || now,
       scheduledDate: data.scheduledDate || data.startTime || now.split('T')[0],
       endTime: data.endTime || null,
@@ -80,9 +85,9 @@ export const tripService = {
       tripName: trip.tripName || trip.title || 'Untitled Trip',
       title: trip.title || trip.tripName || 'Untitled Trip',
       startLocation: trip.startLocation || 'Starting Point',
-      startCoordinates: trip.startCoordinates || { lat: 12.9716, lng: 77.5946 },
+      startCoordinates: trip.startCoordinates || { lat: 17.4938, lng: 78.3968 },
       endLocation: trip.endLocation || 'Final Destination',
-      endCoordinates: trip.endCoordinates || { lat: 12.9784, lng: 77.6408 },
+      endCoordinates: trip.endCoordinates || { lat: 17.4504, lng: 78.3811 },
       startTime: trip.startTime || trip.scheduledDate || trip.createdAt || '',
       endTime: trip.endTime || null,
       totalDistance: trip.totalDistance || (trip.totalDistanceMeters ? `${(trip.totalDistanceMeters / 1000).toFixed(1)} km` : '0 km'),

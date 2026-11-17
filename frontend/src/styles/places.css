@@ -96,3 +96,28 @@
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
 }
+
+/* Google Maps Location Link */
+.rt-location-link {
+  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+  padding: 0.15rem 0.35rem;
+  margin: -0.15rem -0.35rem;
+  border-radius: 4px;
+}
+
+.rt-location-link:hover {
+  color: #0284c7 !important;
+  background-color: #f0f9ff;
+}
+
+.rt-location-link:hover .rt-location-link-text {
+  text-decoration: underline;
+  color: #0369a1;
+}
+
+.rt-location-link:hover .rt-location-link-ext {
+  color: #0284c7 !important;
+  transform: translate(1px, -1px);
+  transition: transform 0.15s ease;
+}
+

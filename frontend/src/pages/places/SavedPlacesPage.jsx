@@ -4,12 +4,17 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotification } from '../../hooks/useNotification';
-import { propertyService, visitService } from '../../services';
+import { propertyService, visitService, inspectionService } from '../../services';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import EmptyState from '../../components/common/EmptyState';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import Modal from '../../components/common/Modal';
 import QuickAddPlaceModal from '../../components/places/QuickAddPlaceModal';
+import LocationNotesModal from '../../components/places/LocationNotesModal';
+import RoomComparisonModal from '../../components/places/RoomComparisonModal';
+import RoomInspectionModal from '../../components/places/RoomInspectionModal';
+import GoogleMapsLocationLink from '../../components/common/GoogleMapsLocationLink';
+import { getGoogleMapsUrl } from '../../utils/googleMaps';
 import { formatDate, getCategoryIcon } from '../../utils/formatters';
 
 const SavedPlacesPage = () => {
@@ -35,11 +40,143 @@ const SavedPlacesPage = () => {
   const [placeToDelete, setPlaceToDelete] = useState(null);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
 
+  // Phase 1: Visited Location Notes Modal
+  const [notesModalPlace, setNotesModalPlace] = useState(null);
+  const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
+
+  // Phase 2: Saved Room Comparison State
+  const [selectedForCompare, setSelectedForCompare] = useState([]);
+  const [isComparisonOpen, setIsComparisonOpen] = useState(false);
+
+  // Phase 3: Favourite Rooms Filter Tab ('all' or 'favorites')
+  const [activeTab, setActiveTab] = useState('all');
+
+  // Phase 6: Room Inspection Checklist State
+  const [inspectionPlace, setInspectionPlace] = useState(null);
+  const [isInspectionModalOpen, setIsInspectionModalOpen] = useState(false);
+  const [latestInspectionSummary, setLatestInspectionSummary] = useState(null);
+  const [loadingInspectionSummary, setLoadingInspectionSummary] = useState(false);
+
+  // Total Favourite Count
+  const favoriteCount = useMemo(() => {
+    return places.filter((p) => Boolean(p.isFavorite || p.favorite)).length;
+  }, [places]);
+
+  // Phase 3: Toggle Favourite Handler
+  const handleToggleFavorite = async (place, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const currentlyFav = Boolean(place.isFavorite || place.favorite);
+    const nextStatus = !currentlyFav;
+
+    // Optimistically update local places state
+    setPlaces((prev) =>
+      prev.map((p) => (p.id === place.id ? { ...p, isFavorite: nextStatus, favorite: nextStatus } : p))
+    );
+    if (activePlace && activePlace.id === place.id) {
+      setActivePlace((prev) => ({ ...prev, isFavorite: nextStatus, favorite: nextStatus }));
+    }
+
+    try {
+      await propertyService.toggleFavorite(place.id, nextStatus);
+      showSuccess(
+        nextStatus
+          ? `Marked "${place.name}" as Favourite!`
+          : `Removed "${place.name}" from Favourites.`
+      );
+    } catch (err) {
+      // Revert optimistic update on error
+      setPlaces((prev) =>
+        prev.map((p) => (p.id === place.id ? { ...p, isFavorite: currentlyFav, favorite: currentlyFav } : p))
+      );
+      if (activePlace && activePlace.id === place.id) {
+        setActivePlace((prev) => ({ ...prev, isFavorite: currentlyFav, favorite: currentlyFav }));
+      }
+      showError(err.message || 'Failed to update favourite status.');
+    }
+  };
+
   // Phase 7: Interactive Leaflet Map Modal for "View on Map"
   const [mapPlace, setMapPlace] = useState(null);
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const placeMapRef = useRef(null);
   const placeLeafletInstance = useRef(null);
+
+  const handleOpenNotes = (place) => {
+    setNotesModalPlace(place);
+    setIsNotesModalOpen(true);
+  };
+
+  const handleNotesSaved = (updatedPlace) => {
+    setPlaces((prev) =>
+      prev.map((p) => (p.id === updatedPlace.id ? { ...p, notes: updatedPlace.notes } : p))
+    );
+    if (activePlace && activePlace.id === updatedPlace.id) {
+      setActivePlace((prev) => ({ ...prev, notes: updatedPlace.notes }));
+    }
+  };
+
+  // Phase 6: Inspection handlers
+  const handleOpenInspection = (place) => {
+    setInspectionPlace(place);
+    setIsInspectionModalOpen(true);
+  };
+
+  const handleInspectionSaved = (savedInspection) => {
+    if (activePlace && activePlace.id === savedInspection.propertyId) {
+      inspectionService
+        .getLatest(activePlace.id)
+        .then((summary) => setLatestInspectionSummary(summary))
+        .catch(() => {});
+    }
+  };
+
+  // Phase 6: Load latest inspection summary for activePlace in details modal
+  useEffect(() => {
+    if (isDetailsOpen && activePlace?.id) {
+      setLoadingInspectionSummary(true);
+      inspectionService
+        .getLatest(activePlace.id)
+        .then((summary) => setLatestInspectionSummary(summary))
+        .catch(() => setLatestInspectionSummary(null))
+        .finally(() => setLoadingInspectionSummary(false));
+    } else {
+      setLatestInspectionSummary(null);
+    }
+  }, [isDetailsOpen, activePlace]);
+
+  const toggleSelectForCompare = (placeId) => {
+    setSelectedForCompare((prev) => {
+      if (prev.includes(placeId)) {
+        return prev.filter((id) => id !== placeId);
+      }
+      if (prev.length >= 4) {
+        showError('A maximum of 4 rooms can be compared at a time.');
+        return prev;
+      }
+      return [...prev, placeId];
+    });
+  };
+
+  const removeRoomFromCompare = (placeId) => {
+    setSelectedForCompare((prev) => prev.filter((id) => id !== placeId));
+  };
+
+  const clearComparison = () => {
+    setSelectedForCompare([]);
+  };
+
+  const openComparisonModal = () => {
+    if (selectedForCompare.length < 2) {
+      showError('Please select at least 2 rooms to compare.');
+      return;
+    }
+    setIsComparisonOpen(true);
+  };
+
+  const selectedPlacesForCompare = places.filter((p) => selectedForCompare.includes(p.id));
 
   // Fetch places & visits from MySQL
   const loadPlaces = async () => {
@@ -167,6 +304,7 @@ const SavedPlacesPage = () => {
         iconAnchor: [17, 34],
       });
 
+      const gmapsUrl = getGoogleMapsUrl(mapPlace);
       const marker = L.marker([lat, lng], { icon: customIcon }).addTo(map);
       marker.bindPopup(`
         <div style="min-width: 190px; font-family: sans-serif; padding: 4px;">
@@ -180,6 +318,13 @@ const SavedPlacesPage = () => {
           <span style="display: inline-block; margin-top: 6px; padding: 2px 8px; font-size: 11px; border-radius: 4px; background: ${isVisited ? '#d1fae5' : '#ffedd5'}; color: ${isVisited ? '#065f46' : '#9a3412'}; font-weight: 600;">
             ${isVisited ? 'Visited' : 'Pending'} &bull; ${getPlaceVisitCount(mapPlace.id)} visit(s)
           </span>
+          ${gmapsUrl ? `
+            <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #cbd5e1;">
+              <a href="${gmapsUrl}" target="_blank" rel="noopener noreferrer" style="font-size: 11px; color: #dc2626; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                <i class="bi bi-geo-alt-fill"></i> Open in Google Maps &rarr;
+              </a>
+            </div>
+          ` : ''}
         </div>
       `).openPopup();
     }, 150);
@@ -218,7 +363,11 @@ const SavedPlacesPage = () => {
           selectedPriority === 'all' ||
           place.priority?.toLowerCase() === selectedPriority.toLowerCase();
 
-        return matchesSearch && matchesCategory && matchesStatus && matchesPriority;
+        const matchesTab =
+          activeTab === 'all' ||
+          (activeTab === 'favorites' && Boolean(place.isFavorite || place.favorite));
+
+        return matchesTab && matchesSearch && matchesCategory && matchesStatus && matchesPriority;
       })
       .sort((a, b) => {
         if (sortBy === 'priority') {
@@ -235,7 +384,7 @@ const SavedPlacesPage = () => {
         }
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
       });
-  }, [places, searchTerm, selectedCategory, selectedStatus, selectedPriority, sortBy]);
+  }, [places, searchTerm, selectedCategory, selectedStatus, selectedPriority, sortBy, activeTab]);
 
   const getPriorityBadgeClass = (priority) => {
     switch (priority?.toLowerCase()) {
@@ -289,6 +438,44 @@ const SavedPlacesPage = () => {
           <Link to="/rooms/new" className="btn btn-rt-primary btn-sm" id="add-room-btn">
             <i className="bi bi-plus-lg"></i> Add Room
           </Link>
+        </div>
+      </div>
+
+      {/* Phase 3: Navigation / Filter Tabs (All Rooms vs Favourite Rooms) */}
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 border-bottom pb-2">
+        <ul className="nav nav-pills" id="saved-rooms-tabs" role="tablist">
+          <li className="nav-item me-2" role="presentation">
+            <button
+              type="button"
+              className={`nav-link btn-sm ${activeTab === 'all' ? 'active' : 'bg-light text-secondary border'}`}
+              onClick={() => setActiveTab('all')}
+              id="all-rooms-tab-btn"
+            >
+              <i className="bi bi-door-open me-1"></i> All Saved Rooms
+              <span className="badge bg-secondary ms-1">{places.length}</span>
+            </button>
+          </li>
+          <li className="nav-item" role="presentation">
+            <button
+              type="button"
+              className={`nav-link btn-sm ${activeTab === 'favorites' ? 'active text-white' : 'bg-light text-secondary border'}`}
+              style={activeTab === 'favorites' ? { backgroundColor: '#dc3545', borderColor: '#dc3545' } : {}}
+              onClick={() => setActiveTab('favorites')}
+              id="favourite-rooms-tab-btn"
+            >
+              <i className={`bi bi-heart-fill me-1 ${activeTab === 'favorites' ? 'text-white' : 'text-danger'}`}></i> Favourite Rooms
+              <span className={`badge ms-1 ${activeTab === 'favorites' ? 'bg-white text-danger' : 'bg-danger text-white'}`}>
+                {favoriteCount}
+              </span>
+            </button>
+          </li>
+        </ul>
+        <div className="text-muted small">
+          {activeTab === 'favorites' ? (
+            <span>Showing <strong>{filteredPlaces.length}</strong> of <strong>{favoriteCount}</strong> favourite room{favoriteCount === 1 ? '' : 's'}</span>
+          ) : (
+            <span>Total <strong>{places.length}</strong> saved room{places.length === 1 ? '' : 's'}</span>
+          )}
         </div>
       </div>
 
@@ -411,7 +598,16 @@ const SavedPlacesPage = () => {
       {loading ? (
         <LoadingSpinner fullPage text="Loading your saved rooms..." />
       ) : filteredPlaces.length === 0 ? (
-        places.length === 0 ? (
+        activeTab === 'favorites' && favoriteCount === 0 ? (
+          <EmptyState
+            icon="bi-heart"
+            title="No Favourite Rooms Yet"
+            description="You haven't marked any rooms as favourite yet. Click the heart icon on any saved room card or table row to keep it here for quick access."
+            actionLabel="Browse All Rooms"
+            actionIcon="bi-door-open"
+            onAction={() => setActiveTab('all')}
+          />
+        ) : places.length === 0 ? (
           <EmptyState
             icon="bi-door-open"
             title="No Saved Rooms Yet"
@@ -448,26 +644,58 @@ const SavedPlacesPage = () => {
                 <div className="place-card h-100 d-flex flex-column">
                   <div className={`place-card-banner priority-${place.priority || 'medium'}`} />
                   <div className="place-card-body d-flex flex-column flex-grow-1">
-                    <div className="d-flex justify-content-between align-items-start mb-2">
-                      <span className={`place-category-pill ${getCategoryPillClass(place.category)}`}>
-                        <i className={`bi ${getCategoryIcon(place.category)}`}></i>
-                        {place.category || 'Room'}
-                      </span>
-                      <span className="badge bg-light text-secondary border small">
-                        <i className="bi bi-eye-fill me-1 text-primary"></i>
-                        {visitCount} {visitCount === 1 ? 'visit' : 'visits'}
-                      </span>
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <div className="d-flex align-items-center gap-2">
+                        <span className={`place-category-pill ${getCategoryPillClass(place.category)}`}>
+                          <i className={`bi ${getCategoryIcon(place.category)}`}></i>
+                          {place.category || 'Room'}
+                        </span>
+                        <div className="form-check form-check-inline mb-0 ms-1" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            className="form-check-input"
+                            type="checkbox"
+                            id={`compare-check-${place.id}`}
+                            checked={selectedForCompare.includes(place.id)}
+                            onChange={() => toggleSelectForCompare(place.id)}
+                          />
+                          <label
+                            className="form-check-label small fw-semibold text-secondary"
+                            htmlFor={`compare-check-${place.id}`}
+                            style={{ cursor: 'pointer', fontSize: '0.78rem' }}
+                          >
+                            Compare
+                          </label>
+                        </div>
+                      </div>
+                      <div className="d-flex align-items-center gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-link p-0 text-decoration-none"
+                          onClick={(e) => handleToggleFavorite(place, e)}
+                          id={`card-fav-btn-${place.id}`}
+                          title={(place.isFavorite || place.favorite) ? 'Remove from favourites' : 'Mark as favourite'}
+                          aria-label={(place.isFavorite || place.favorite) ? 'Remove from favourites' : 'Mark as favourite'}
+                          style={{ fontSize: '1.25rem', lineHeight: 1 }}
+                        >
+                          <i className={`bi ${(place.isFavorite || place.favorite) ? 'bi-heart-fill text-danger' : 'bi-heart text-secondary'}`}></i>
+                        </button>
+                        <span className="badge bg-light text-secondary border small">
+                          <i className="bi bi-eye-fill me-1 text-primary"></i>
+                          {visitCount} {visitCount === 1 ? 'visit' : 'visits'}
+                        </span>
+                      </div>
                     </div>
 
                     <h5 className="fw-bold text-dark mb-1 text-truncate" title={place.name}>
                       {place.name}
                     </h5>
 
-                    <p className="text-muted small mb-2 text-truncate" title={place.address}>
-                      <i className="bi bi-geo-alt text-danger me-1"></i>
-                      {place.address || 'Address not specified'}
-                      {place.city ? `, ${place.city}` : ''}
-                    </p>
+                    <div className="mb-2 text-truncate" style={{ fontSize: '0.84rem' }}>
+                      <GoogleMapsLocationLink
+                        place={place}
+                        onMissingLocation={() => showError('Location coordinates and address are not available for this room.')}
+                      />
+                    </div>
 
                     <div className="d-flex align-items-center justify-content-between mb-2 border-top border-bottom py-2">
                       <div>
@@ -499,10 +727,41 @@ const SavedPlacesPage = () => {
                       )}
                     </div>
 
-                    {/* Notes Snippet */}
-                    <div className="p-2 rounded bg-light border small text-muted mb-2 text-truncate" title={place.notes || place.description || 'No personal notes'}>
-                      <i className="bi bi-sticky me-1 text-warning"></i>
-                      {place.notes || place.description || <span className="text-muted fst-italic">No personal notes</span>}
+                    {/* Personal Notes Box (View / Edit) */}
+                    <div className="p-2 rounded bg-light border small mb-2">
+                      <div className="d-flex align-items-center justify-content-between mb-1">
+                        <span className="fw-semibold text-secondary" style={{ fontSize: '0.72rem' }}>
+                          <i className="bi bi-sticky-fill text-warning me-1"></i>NOTES
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-link btn-sm p-0 text-primary text-decoration-none fw-semibold"
+                          style={{ fontSize: '0.72rem' }}
+                          onClick={() => handleOpenNotes(place)}
+                          id={`card-edit-notes-btn-${place.id}`}
+                        >
+                          {place.notes ? 'Edit Notes' : '+ Add Notes'}
+                        </button>
+                      </div>
+                      {place.notes ? (
+                        <div
+                          className="text-dark"
+                          style={{
+                            maxHeight: '75px',
+                            overflowY: 'auto',
+                            whiteSpace: 'pre-line',
+                            lineHeight: '1.4',
+                            fontSize: '0.82rem',
+                          }}
+                          title={place.notes}
+                        >
+                          {place.notes}
+                        </div>
+                      ) : (
+                        <div className="fst-italic text-secondary" style={{ fontSize: '0.8rem' }}>
+                          No personal notes recorded yet.
+                        </div>
+                      )}
                     </div>
 
                     {/* Detected Date and Time */}
@@ -524,6 +783,37 @@ const SavedPlacesPage = () => {
                         title="View Full Details"
                       >
                         <i className="bi bi-eye me-1"></i> View
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${selectedForCompare.includes(place.id) ? 'btn-primary' : 'btn-outline-primary'} px-2`}
+                        onClick={() => toggleSelectForCompare(place.id)}
+                        id={`place-compare-toggle-btn-${place.id}`}
+                        title={selectedForCompare.includes(place.id) ? 'Remove from comparison' : 'Select for comparison'}
+                      >
+                        <i className={`bi ${selectedForCompare.includes(place.id) ? 'bi-check-square-fill' : 'bi-arrow-left-right'} me-1`}></i>
+                        {selectedForCompare.includes(place.id) ? 'Selected' : 'Compare'}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn btn-outline-warning btn-sm px-2"
+                        onClick={() => handleOpenNotes(place)}
+                        id={`place-notes-btn-${place.id}`}
+                        title={place.notes ? 'View & Edit Notes' : 'Add Notes'}
+                      >
+                        <i className="bi bi-sticky me-1"></i> Notes
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn btn-outline-info btn-sm px-2"
+                        onClick={() => handleOpenInspection(place)}
+                        id={`room-inspect-btn-${place.id}`}
+                        title="Room Inspection Checklist"
+                      >
+                        <i className="bi bi-clipboard2-check me-1"></i> Inspect
                       </button>
 
                       <button
@@ -570,6 +860,12 @@ const SavedPlacesPage = () => {
           <table className="rt-table">
             <thead>
               <tr>
+                <th style={{ width: '45px' }} className="text-center">
+                  <i className="bi bi-arrow-left-right" title="Select rooms to compare"></i>
+                </th>
+                <th style={{ width: '40px' }} className="text-center" title="Favourite status">
+                  <i className="bi bi-heart-fill text-danger"></i>
+                </th>
                 <th>Property Name</th>
                 <th>Address</th>
                 <th>Rent</th>
@@ -588,6 +884,29 @@ const SavedPlacesPage = () => {
 
                 return (
                   <tr key={place.id} id={`room-row-${place.id}`}>
+                    <td className="text-center" style={{ width: '45px' }}>
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={selectedForCompare.includes(place.id)}
+                        onChange={() => toggleSelectForCompare(place.id)}
+                        id={`table-compare-check-${place.id}`}
+                        title="Select for comparison"
+                      />
+                    </td>
+                    <td className="text-center" style={{ width: '40px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-link p-0 text-decoration-none"
+                        onClick={(e) => handleToggleFavorite(place, e)}
+                        id={`table-fav-btn-${place.id}`}
+                        title={(place.isFavorite || place.favorite) ? 'Remove from favourites' : 'Mark as favourite'}
+                        aria-label={(place.isFavorite || place.favorite) ? 'Remove from favourites' : 'Mark as favourite'}
+                        style={{ fontSize: '1.15rem', lineHeight: 1 }}
+                      >
+                        <i className={`bi ${(place.isFavorite || place.favorite) ? 'bi-heart-fill text-danger' : 'bi-heart text-secondary'}`}></i>
+                      </button>
+                    </td>
                     <td>
                       <div className="fw-bold text-dark">{place.name}</div>
                       <span className={`place-category-pill ${getCategoryPillClass(place.category)} mt-1`}>
@@ -596,8 +915,15 @@ const SavedPlacesPage = () => {
                       </span>
                     </td>
                     <td>
-                      <div className="small text-dark">{place.address || 'Address not set'}</div>
-                      <div className="text-muted" style={{ fontSize: '0.75rem' }}>{place.city || 'City'}</div>
+                      <GoogleMapsLocationLink
+                        place={place}
+                        onMissingLocation={() => showError('Location coordinates and address are not available for this room.')}
+                      >
+                        <div className="d-inline-block text-truncate" style={{ maxWidth: '220px' }}>
+                          <div className="small text-dark fw-medium text-truncate">{place.address || 'Address not set'}</div>
+                          <div className="text-muted" style={{ fontSize: '0.75rem' }}>{place.city || ''}</div>
+                        </div>
+                      </GoogleMapsLocationLink>
                     </td>
                     <td>
                       <span className="fw-bold text-dark">
@@ -613,10 +939,39 @@ const SavedPlacesPage = () => {
                         <span className="text-muted small">—</span>
                       )}
                     </td>
-                    <td style={{ maxWidth: '180px' }}>
-                      <div className="text-truncate small text-muted" title={place.notes || place.description}>
-                        {place.notes || place.description || '—'}
-                      </div>
+                    <td style={{ maxWidth: '240px' }}>
+                      {place.notes ? (
+                        <div className="d-flex align-items-start justify-content-between gap-1">
+                          <div
+                            className="text-truncate small text-dark"
+                            style={{ maxWidth: '180px' }}
+                            title={place.notes}
+                          >
+                            {place.notes}
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-link p-0 text-primary text-decoration-none"
+                            onClick={() => handleOpenNotes(place)}
+                            title="Edit Notes"
+                            id={`table-edit-notes-link-${place.id}`}
+                          >
+                            <i className="bi bi-pencil-square"></i>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="d-flex align-items-center justify-content-between">
+                          <span className="text-muted fst-italic small">No notes</span>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-link p-0 text-primary small text-decoration-none"
+                            onClick={() => handleOpenNotes(place)}
+                            id={`table-add-notes-link-${place.id}`}
+                          >
+                            + Add
+                          </button>
+                        </div>
+                      )}
                     </td>
                     <td>
                       <div className="small text-dark fw-semibold">{detectedTime}</div>
@@ -630,6 +985,15 @@ const SavedPlacesPage = () => {
                       <div className="d-flex align-items-center justify-content-end gap-1">
                         <button
                           type="button"
+                          className={`btn btn-sm ${(place.isFavorite || place.favorite) ? 'btn-danger' : 'btn-outline-danger'} p-1 px-2`}
+                          onClick={(e) => handleToggleFavorite(place, e)}
+                          id={`table-fav-action-btn-${place.id}`}
+                          title={(place.isFavorite || place.favorite) ? 'Remove from favourites' : 'Mark as favourite'}
+                        >
+                          <i className={`bi ${(place.isFavorite || place.favorite) ? 'bi-heart-fill' : 'bi-heart'}`}></i>
+                        </button>
+                        <button
+                          type="button"
                           className="btn btn-sm btn-outline-secondary p-1 px-2"
                           onClick={() => {
                             setActivePlace(place);
@@ -639,6 +1003,33 @@ const SavedPlacesPage = () => {
                           title="View Details"
                         >
                           <i className="bi bi-eye"></i>
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${selectedForCompare.includes(place.id) ? 'btn-primary' : 'btn-outline-primary'} p-1 px-2`}
+                          onClick={() => toggleSelectForCompare(place.id)}
+                          id={`table-compare-btn-${place.id}`}
+                          title={selectedForCompare.includes(place.id) ? 'Remove from comparison' : 'Compare room'}
+                        >
+                          <i className="bi bi-arrow-left-right"></i>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-warning p-1 px-2"
+                          onClick={() => handleOpenNotes(place)}
+                          id={`table-notes-btn-${place.id}`}
+                          title="View / Edit Personal Notes"
+                        >
+                          <i className="bi bi-sticky"></i>
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-outline-info p-1 px-2"
+                          onClick={() => handleOpenInspection(place)}
+                          id={`table-inspect-btn-${place.id}`}
+                          title="Room Inspection Checklist"
+                        >
+                          <i className="bi bi-clipboard2-check"></i>
                         </button>
                         <button
                           type="button"
@@ -702,6 +1093,17 @@ const SavedPlacesPage = () => {
                 <>
                   <button
                     type="button"
+                    className="btn btn-sm btn-outline-info"
+                    onClick={() => {
+                      setIsDetailsOpen(false);
+                      handleOpenInspection(activePlace);
+                    }}
+                    id="details-inspection-btn"
+                  >
+                    <i className="bi bi-clipboard2-check me-1"></i> Inspection Checklist
+                  </button>
+                  <button
+                    type="button"
                     className="btn btn-sm btn-outline-primary"
                     onClick={() => {
                       setIsDetailsOpen(false);
@@ -731,7 +1133,17 @@ const SavedPlacesPage = () => {
                 <i className={`bi ${getCategoryIcon(activePlace.category)}`}></i>
                 {activePlace.category || 'Room'}
               </span>
-              <div className="d-flex gap-2">
+              <div className="d-flex align-items-center gap-2">
+                <button
+                  type="button"
+                  className={`btn btn-sm ${(activePlace.isFavorite || activePlace.favorite) ? 'btn-danger' : 'btn-outline-danger'} d-flex align-items-center gap-1`}
+                  onClick={(e) => handleToggleFavorite(activePlace, e)}
+                  id="details-fav-btn"
+                  title={(activePlace.isFavorite || activePlace.favorite) ? 'Remove from favourites' : 'Mark as favourite'}
+                >
+                  <i className={`bi ${(activePlace.isFavorite || activePlace.favorite) ? 'bi-heart-fill' : 'bi-heart'}`}></i>
+                  {(activePlace.isFavorite || activePlace.favorite) ? 'Favourited' : 'Add to Favourites'}
+                </button>
                 <span className="badge bg-light text-dark border small">
                   {getPlaceVisitCount(activePlace.id)} Total Visits
                 </span>
@@ -759,15 +1171,40 @@ const SavedPlacesPage = () => {
             </div>
 
             <div className="mb-3">
-              <label className="fw-bold small text-muted text-uppercase">Address & Location</label>
-              <div className="text-dark">{activePlace.address || 'Address not specified'}</div>
-              <div className="text-muted small">{activePlace.city || ''}</div>
-              {activePlace.latitude && activePlace.longitude && (
-                <div className="small text-primary mt-1 font-monospace">
-                  <i className="bi bi-geo-alt me-1"></i>
-                  GPS Coordinates: {Number(activePlace.latitude).toFixed(6)}°, {Number(activePlace.longitude).toFixed(6)}°
-                </div>
-              )}
+              <div className="d-flex justify-content-between align-items-center mb-1">
+                <label className="fw-bold small text-muted text-uppercase mb-0">Address & Location</label>
+                <GoogleMapsLocationLink
+                  place={activePlace}
+                  variant="button"
+                  btnSize="sm"
+                  onMissingLocation={() => showError('Location coordinates and address are not available for this room.')}
+                >
+                  Open in Google Maps
+                </GoogleMapsLocationLink>
+              </div>
+              <div className="p-3 rounded bg-light border">
+                <GoogleMapsLocationLink
+                  place={activePlace}
+                  onMissingLocation={() => showError('Location coordinates and address are not available for this room.')}
+                >
+                  <div className="text-dark fw-medium fs-6">{activePlace.address || 'Address not specified'}</div>
+                  {activePlace.city && <div className="text-muted small">{activePlace.city}</div>}
+                </GoogleMapsLocationLink>
+                {activePlace.latitude && activePlace.longitude && (
+                  <div className="small text-primary mt-2 font-monospace d-flex align-items-center justify-content-between flex-wrap gap-2 pt-2 border-top">
+                    <span>
+                      <i className="bi bi-geo-alt-fill text-danger me-1"></i>
+                      GPS Coordinates: {Number(activePlace.latitude).toFixed(6)}°, {Number(activePlace.longitude).toFixed(6)}°
+                    </span>
+                    <GoogleMapsLocationLink
+                      place={activePlace}
+                      variant="badge"
+                    >
+                      Navigate in Google Maps
+                    </GoogleMapsLocationLink>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="mb-3 p-3 rounded border" style={{ backgroundColor: 'var(--rt-blue-50)' }}>
@@ -784,14 +1221,161 @@ const SavedPlacesPage = () => {
             </div>
 
             <div className="mb-0">
-              <label className="fw-bold small text-muted text-uppercase mb-1">Personal Notes & Observations</label>
-              <p className="text-secondary small bg-light p-3 rounded border mb-0">
-                {activePlace.notes || activePlace.description || <span className="text-muted fst-italic">No personal notes recorded. (Optional)</span>}
-              </p>
+              <div className="d-flex justify-content-between align-items-center mb-1">
+                <label className="fw-bold small text-muted text-uppercase mb-0">Personal Notes & Observations</label>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-primary py-0 px-2"
+                  onClick={() => {
+                    setIsDetailsOpen(false);
+                    handleOpenNotes(activePlace);
+                  }}
+                  id="details-edit-notes-btn"
+                >
+                  <i className="bi bi-pencil me-1"></i> {activePlace.notes ? 'Edit Notes' : 'Add Notes'}
+                </button>
+              </div>
+              {activePlace.notes ? (
+                <p className="text-dark small bg-light p-3 rounded border mb-0" style={{ whiteSpace: 'pre-line' }}>
+                  {activePlace.notes}
+                </p>
+              ) : (
+                <div className="text-muted fst-italic p-3 bg-light rounded border text-center">
+                  <i className="bi bi-sticky text-secondary d-block fs-4 mb-1"></i>
+                  No personal notes recorded yet. (Optional)
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary"
+                      onClick={() => {
+                        setIsDetailsOpen(false);
+                        handleOpenNotes(activePlace);
+                      }}
+                      id="details-empty-add-notes-btn"
+                    >
+                      <i className="bi bi-plus-circle me-1"></i> Add Notes
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Phase 6: Room Inspection Checklist Summary Section */}
+            <div className="mt-3 p-3 rounded border" style={{ backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }} id="details-inspection-section">
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <div className="d-flex align-items-center gap-2">
+                  <span className="badge bg-success text-white">
+                    <i className="bi bi-clipboard2-check-fill me-1"></i> Inspection
+                  </span>
+                  <span className="fw-bold small text-dark">ROOM INSPECTION CHECKLIST</span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-success fw-semibold"
+                  onClick={() => {
+                    setIsDetailsOpen(false);
+                    handleOpenInspection(activePlace);
+                  }}
+                  id="details-open-inspection-btn"
+                >
+                  <i className="bi bi-pencil-square me-1"></i>
+                  {latestInspectionSummary ? 'View / Edit Checklist' : 'Start Inspection'}
+                </button>
+              </div>
+
+              {loadingInspectionSummary ? (
+                <div className="text-center py-2 text-muted small">
+                  <span className="spinner-border spinner-border-sm me-2" role="status"></span>
+                  Loading inspection summary...
+                </div>
+              ) : latestInspectionSummary ? (
+                <div>
+                  <div className="row g-2 mb-2">
+                    <div className="col-sm-4">
+                      <div className="bg-white p-2 rounded border small">
+                        <div className="text-muted" style={{ fontSize: '0.72rem' }}>INSPECTION DATE</div>
+                        <div className="fw-bold text-dark">{latestInspectionSummary.inspectionDate || 'Not set'}</div>
+                      </div>
+                    </div>
+                    <div className="col-sm-4">
+                      <div className="bg-white p-2 rounded border small">
+                        <div className="text-muted" style={{ fontSize: '0.72rem' }}>OVERALL RATING</div>
+                        <div className="fw-bold text-warning">
+                          {latestInspectionSummary.overallRating ? (
+                            <>
+                              {Array.from({ length: 5 }, (_, i) => (
+                                <i
+                                  key={i}
+                                  className={`bi ${i < latestInspectionSummary.overallRating ? 'bi-star-fill text-warning' : 'bi-star text-muted'}`}
+                                />
+                              ))}
+                              <span className="ms-1 text-dark">({latestInspectionSummary.overallRating}/5)</span>
+                            </>
+                          ) : (
+                            <span className="text-muted fst-italic">Not rated</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="col-sm-4">
+                      <div className="bg-white p-2 rounded border small">
+                        <div className="text-muted" style={{ fontSize: '0.72rem' }}>SUITABILITY</div>
+                        <div>
+                          {latestInspectionSummary.suitableForRent === true ? (
+                            <span className="badge bg-success-subtle text-success border border-success-subtle">
+                              <i className="bi bi-hand-thumbs-up-fill me-1"></i> Suitable for Rent
+                            </span>
+                          ) : latestInspectionSummary.suitableForRent === false ? (
+                            <span className="badge bg-danger-subtle text-danger border border-danger-subtle">
+                              <i className="bi bi-hand-thumbs-down-fill me-1"></i> Not Suitable
+                            </span>
+                          ) : (
+                            <span className="badge bg-secondary-subtle text-secondary border">Undecided</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="d-flex align-items-center justify-content-between bg-white p-2 rounded border small mb-2">
+                    <span className="text-muted">Items Inspected:</span>
+                    <span className="fw-bold text-dark">
+                      {latestInspectionSummary.inspectedCount || 0} / {latestInspectionSummary.totalItems || 34} checked ({latestInspectionSummary.completionPercentage || 0}%)
+                    </span>
+                  </div>
+
+                  {(latestInspectionSummary.remarksSnippet || latestInspectionSummary.concernsSnippet) && (
+                    <div className="bg-white p-2 rounded border small">
+                      {latestInspectionSummary.concernsSnippet && (
+                        <div className="text-danger mb-1">
+                          <strong><i className="bi bi-exclamation-triangle-fill me-1"></i>Concerns:</strong> {latestInspectionSummary.concernsSnippet}
+                        </div>
+                      )}
+                      {latestInspectionSummary.remarksSnippet && (
+                        <div className="text-secondary">
+                          <strong>Remarks:</strong> {latestInspectionSummary.remarksSnippet}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-muted small fst-italic bg-white p-2 rounded border text-center">
+                  No inspection checklist recorded yet for this room. Click "Start Inspection" to evaluate condition, bathroom, electrical, kitchen, security and surroundings.
+                </div>
+              )}
             </div>
           </div>
         )}
       </Modal>
+
+      {/* Visited Location Notes Modal */}
+      <LocationNotesModal
+        isOpen={isNotesModalOpen}
+        onClose={() => setIsNotesModalOpen(false)}
+        property={notesModalPlace}
+        onNotesSaved={handleNotesSaved}
+      />
 
       {/* Interactive Leaflet Map Modal for "View on Map" */}
       <Modal
@@ -800,18 +1384,30 @@ const SavedPlacesPage = () => {
         title={mapPlace ? `Location Map: ${mapPlace.name}` : 'Saved Room Map'}
         size="lg"
         footer={
-          <div className="d-flex justify-content-between align-items-center w-100">
+          <div className="d-flex justify-content-between align-items-center w-100 flex-wrap gap-2">
             <span className="small text-muted">
               Default OpenStreetMap Street Tiles &bull; Coordinates: {mapPlace ? `${Number(mapPlace.latitude).toFixed(4)}°, ${Number(mapPlace.longitude).toFixed(4)}°` : ''}
             </span>
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              onClick={() => setIsMapModalOpen(false)}
-              id="close-place-map-modal-btn"
-            >
-              Close Map
-            </button>
+            <div className="d-flex gap-2 align-items-center">
+              {mapPlace && (
+                <GoogleMapsLocationLink
+                  place={mapPlace}
+                  variant="button"
+                  btnSize="sm"
+                  onMissingLocation={() => showError('Location coordinates and address are not available for this room.')}
+                >
+                  Open in Google Maps
+                </GoogleMapsLocationLink>
+              )}
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={() => setIsMapModalOpen(false)}
+                id="close-place-map-modal-btn"
+              >
+                Close Map
+              </button>
+            </div>
           </div>
         }
       >
@@ -848,6 +1444,91 @@ const SavedPlacesPage = () => {
         onSuccess={(newPlace) => {
           setPlaces((prev) => [newPlace, ...prev]);
         }}
+      />
+
+      {/* Phase 2: Floating Sticky Comparison Dock */}
+      {selectedForCompare.length > 0 && (
+        <div
+          id="saved-rooms-comparison-dock"
+          className="position-fixed bottom-0 start-50 translate-middle-x mb-4 shadow-lg p-3 bg-white border border-primary-subtle rounded-4 animate__animated animate__fadeInUp"
+          style={{ zIndex: 1040, width: '92%', maxWidth: '850px' }}
+        >
+          <div className="d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <span className="p-1 px-2 rounded bg-primary text-white">
+                <i className="bi bi-arrow-left-right"></i>
+              </span>
+              <span className="fw-bold small text-dark">
+                {selectedForCompare.length} of 4 rooms selected
+              </span>
+              <div className="d-none d-sm-flex align-items-center gap-1 flex-wrap ms-1">
+                {selectedPlacesForCompare.map((p) => (
+                  <span
+                    key={p.id}
+                    className="badge bg-light text-dark border d-inline-flex align-items-center gap-1 py-1 px-2"
+                  >
+                    <span className="text-truncate" style={{ maxWidth: '110px' }}>
+                      {p.name}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-close"
+                      style={{ fontSize: '0.55rem' }}
+                      onClick={() => removeRoomFromCompare(p.id)}
+                      aria-label="Remove"
+                    ></button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="d-flex align-items-center gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={clearComparison}
+              >
+                Clear All
+              </button>
+              <button
+                type="button"
+                id="compare-selected-btn"
+                className="btn btn-sm btn-primary fw-semibold px-3 shadow-sm d-flex align-items-center gap-1"
+                onClick={openComparisonModal}
+                disabled={selectedForCompare.length < 2}
+                title={
+                  selectedForCompare.length < 2
+                    ? 'Select at least 2 rooms to compare'
+                    : 'Open side-by-side room comparison'
+                }
+              >
+                <i className="bi bi-layout-three-columns"></i>
+                Compare Selected ({selectedForCompare.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Phase 2: Saved Room Comparison Modal */}
+      <RoomComparisonModal
+        isOpen={isComparisonOpen}
+        onClose={() => setIsComparisonOpen(false)}
+        selectedIds={selectedForCompare}
+        onRemoveRoom={removeRoomFromCompare}
+        userReferenceCoords={
+          user?.homeLat && user?.homeLng
+            ? { lat: user.homeLat, lng: user.homeLng }
+            : null
+        }
+      />
+
+      {/* Phase 6: Room Inspection Checklist Modal */}
+      <RoomInspectionModal
+        isOpen={isInspectionModalOpen}
+        onClose={() => setIsInspectionModalOpen(false)}
+        property={inspectionPlace}
+        onInspectionSaved={handleInspectionSaved}
       />
     </div>
   );

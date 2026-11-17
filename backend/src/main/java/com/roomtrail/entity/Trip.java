@@ -33,28 +33,28 @@ public class Trip {
     private String startLocation = "Home Base";
 
     @Column(name = "start_lat")
-    private Double startLat = 12.9716;
+    private Double startLat = 17.4938;
 
     @Column(name = "start_latitude")
     private Double startLatitude;
 
     @Column(name = "start_lng")
-    private Double startLng = 77.5946;
+    private Double startLng = 78.3968;
 
     @Column(name = "start_longitude")
     private Double startLongitude;
 
     @Column(name = "end_location", length = 200)
-    private String endLocation = "Indiranagar Central";
+    private String endLocation = "Cyber Towers, Hitech City";
 
     @Column(name = "end_lat")
-    private Double endLat = 12.9784;
+    private Double endLat = 17.4504;
 
     @Column(name = "end_latitude")
     private Double endLatitude;
 
     @Column(name = "end_lng")
-    private Double endLng = 77.6408;
+    private Double endLng = 78.3811;
 
     @Column(name = "end_longitude")
     private Double endLongitude;

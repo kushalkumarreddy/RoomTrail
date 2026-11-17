@@ -23,4 +23,14 @@ export const trackingService = {
       await apiClient.delete(`/routePoints/${pt.id}`);
     }
   },
+
+  getTrackingPreferences: async () => {
+    const response = await apiClient.get('/user/tracking-preferences');
+    return response.data;
+  },
+
+  updateTrackingPreferences: async (preferences) => {
+    const response = await apiClient.put('/user/tracking-preferences', preferences);
+    return response.data;
+  },
 };

@@ -39,19 +39,31 @@ public class User {
     private String travelMode = "car";
 
     @Column(length = 100)
-    private String city = "Bengaluru, India";
+    private String city = "Hyderabad, Telangana";
 
     @Column(name = "home_lat")
-    private Double homeLat = 12.9716;
+    private Double homeLat = 17.4938;
 
     @Column(name = "home_lng")
-    private Double homeLng = 77.5946;
+    private Double homeLng = 78.3968;
 
     @Column(name = "notification_radius_meters")
     private Integer notificationRadiusMeters = 200;
 
     @Column(name = "theme_preference", length = 20)
     private String themePreference = "light";
+
+    @Column(name = "tracking_confirmation")
+    private Boolean trackingConfirmation = true;
+
+    @Column(name = "accuracy_warning_meters")
+    private Integer accuracyWarningMeters = 50;
+
+    @Column(name = "tracking_reminder_minutes")
+    private Integer trackingReminderMinutes = 60;
+
+    @Column(name = "privacy_reminder_acknowledged")
+    private Boolean privacyReminderAcknowledged = true;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
@@ -125,6 +137,18 @@ public class User {
 
     public String getThemePreference() { return themePreference; }
     public void setThemePreference(String themePreference) { this.themePreference = themePreference; }
+
+    public Boolean getTrackingConfirmation() { return trackingConfirmation != null ? trackingConfirmation : true; }
+    public void setTrackingConfirmation(Boolean trackingConfirmation) { this.trackingConfirmation = trackingConfirmation; }
+
+    public Integer getAccuracyWarningMeters() { return accuracyWarningMeters != null ? accuracyWarningMeters : 50; }
+    public void setAccuracyWarningMeters(Integer accuracyWarningMeters) { this.accuracyWarningMeters = accuracyWarningMeters; }
+
+    public Integer getTrackingReminderMinutes() { return trackingReminderMinutes != null ? trackingReminderMinutes : 60; }
+    public void setTrackingReminderMinutes(Integer trackingReminderMinutes) { this.trackingReminderMinutes = trackingReminderMinutes; }
+
+    public Boolean getPrivacyReminderAcknowledged() { return privacyReminderAcknowledged != null ? privacyReminderAcknowledged : true; }
+    public void setPrivacyReminderAcknowledged(Boolean privacyReminderAcknowledged) { this.privacyReminderAcknowledged = privacyReminderAcknowledged; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

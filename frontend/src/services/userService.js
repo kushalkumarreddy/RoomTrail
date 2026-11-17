@@ -93,6 +93,22 @@ export const userService = {
     const response = await apiClient.delete(`/users/${id}`);
     return response.data;
   },
+
+  /**
+   * Phase 8: Get authenticated user's tracking safety preferences
+   */
+  getTrackingPreferences: async () => {
+    const response = await apiClient.get('/user/tracking-preferences');
+    return response.data;
+  },
+
+  /**
+   * Phase 8: Update authenticated user's tracking safety preferences
+   */
+  updateTrackingPreferences: async (preferences) => {
+    const response = await apiClient.put('/user/tracking-preferences', preferences);
+    return response.data;
+  },
 };
 
 export default userService;
